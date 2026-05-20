@@ -82,6 +82,15 @@
         <header class="h-16 flex items-center justify-between px-8 bg-slate-800 border-b border-slate-700 z-10 shadow-md">
             <h1 id="pageTitle" class="text-2xl font-semibold text-white tracking-wide">Visão Geral</h1>
             <div class="flex items-center space-x-4">
+                
+                <!-- SELETOR DE NAMESPACE -->
+                <div id="nsSelectorContainer" class="flex items-center bg-slate-700 rounded-lg px-3 py-1.5 border border-slate-600 hidden">
+                    <i class="fas fa-filter text-slate-400 mr-2 text-xs"></i>
+                    <select id="globalNamespaceSelector" onchange="changeNamespace(this.value)" class="bg-transparent text-white text-xs focus:outline-none cursor-pointer">
+                        <option value="default" class="bg-slate-800">default</option>
+                    </select>
+                </div>
+
                 <div class="flex items-center bg-slate-900 rounded-full px-3 py-1 border border-slate-700">
                     <span class="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span>
                     <span class="text-slate-300 text-xs">Ligado ao Minikube</span>
@@ -108,6 +117,31 @@
     <script>
         const apiBase = '/api';
         let currentView = 'dashboard';
+        let selectedNamespace = 'default';
+
+        // Carrega a lista de namespaces para o seletor global
+        async function loadNamespaceOptions() {
+            try {
+                const res = await fetch(`${apiBase}/namespaces`);
+                const namespaces = await res.json();
+                const selector = document.getElementById('globalNamespaceSelector');
+                
+                selector.innerHTML = namespaces.map(ns => 
+                    `<option value="${ns.name}" ${ns.name === selectedNamespace ? 'selected' : ''} class="bg-slate-800">${ns.name}</option>`
+                ).join('');
+                
+                // Se o namespace selecionado desaparecer (ex: apagado), volta ao default
+                if(!namespaces.find(ns => ns.name === selectedNamespace)) {
+                    selectedNamespace = 'default';
+                    loadCurrentView();
+                }
+            } catch (err) { console.error("Erro ao carregar namespaces", err); }
+        }
+
+        function changeNamespace(ns) {
+            selectedNamespace = ns;
+            loadCurrentView();
+        }
 
         function loadView(viewName, element) {
             currentView = viewName;
@@ -120,6 +154,15 @@
             const titles = { 'dashboard': 'Visão Geral do Cluster', 'nodes': 'Gestão de Nodes', 'namespaces': 'Espaços Lógicos (Namespaces)', 'pods': 'Instâncias (Pods)', 'deployments': 'Aplicações (Deployments)', 'services': 'Rede (Services)', 'ingresses': 'Regras de Acesso (Ingress)' };
             document.getElementById('pageTitle').innerText = titles[viewName];
             
+            // Mostra/Esconde seletor de namespace
+            const nsSelectorContainer = document.getElementById('nsSelectorContainer');
+            if(['dashboard', 'nodes', 'namespaces'].includes(viewName)) {
+                nsSelectorContainer.classList.add('hidden');
+            } else {
+                nsSelectorContainer.classList.remove('hidden');
+                loadNamespaceOptions();
+            }
+
             document.getElementById('mainContent').innerHTML = `
                 <div class="flex h-64 justify-center items-center flex-col text-slate-400">
                     <i class="fas fa-circle-notch fa-spin text-blue-500 text-4xl mb-4"></i>
@@ -138,7 +181,7 @@
                 const data = await res.json();
                 
                 document.getElementById('mainContent').innerHTML = `
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 fade-in">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 fade-in mb-8">
                         <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg flex items-center justify-between">
                             <div><p class="text-slate-400 font-medium mb-1">Total de Nodes</p><h3 class="text-4xl font-bold text-white">${data.totalNodes}</h3></div>
                             <div class="w-14 h-14 bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-400"><i class="fas fa-server text-2xl"></i></div>
@@ -156,18 +199,53 @@
                             <div class="w-14 h-14 bg-rose-500/20 rounded-full flex items-center justify-center text-rose-400"><i class="fas fa-folder text-2xl"></i></div>
                         </div>
                     </div>
+
+                    <!-- RECURSOS DO CLUSTER -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 fade-in">
+                        <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg">
+                            <div class="flex justify-between items-end mb-4">
+                                <div>
+                                    <h4 class="text-white font-semibold text-lg">Alocação de CPU</h4>
+                                    <p class="text-slate-500 text-xs uppercase font-bold tracking-wider">Total: ${data.totalCpu}</p>
+                                </div>
+                                <span class="text-blue-400 font-bold text-2xl">${data.cpuUsage}%</span>
+                            </div>
+                            <div class="w-full bg-slate-800 rounded-full h-3 border border-slate-700 overflow-hidden">
+                                <div class="bg-blue-500 h-full rounded-full transition-all duration-1000" style="width: ${data.cpuUsage}%"></div>
+                            </div>
+                            <p class="mt-4 text-slate-400 text-xs">Percentagem de CPU reservada para o sistema e pods.</p>
+                        </div>
+
+                        <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg">
+                            <div class="flex justify-between items-end mb-4">
+                                <div>
+                                    <h4 class="text-white font-semibold text-lg">Alocação de Memória</h4>
+                                    <p class="text-slate-500 text-xs uppercase font-bold tracking-wider">Total: ${data.totalMem}</p>
+                                </div>
+                                <span class="text-emerald-400 font-bold text-2xl">${data.memUsage}%</span>
+                            </div>
+                            <div class="w-full bg-slate-800 rounded-full h-3 border border-slate-700 overflow-hidden">
+                                <div class="bg-emerald-500 h-full rounded-full transition-all duration-1000" style="width: ${data.memUsage}%"></div>
+                            </div>
+                            <p class="mt-4 text-slate-400 text-xs">Percentagem de Memória RAM reservada para o sistema e pods.</p>
+                        </div>
+                    </div>
                 `;
             } catch (err) { showToast("Falha ao comunicar com API", "error"); }
         }
 
         async function loadListData(resource) {
             try {
-                const res = await fetch(`${apiBase}/${resource}`);
+                let url = `${apiBase}/${resource}`;
+                if(!['nodes', 'namespaces'].includes(resource)) {
+                    url += `?ns=${selectedNamespace}`;
+                }
+
+                const res = await fetch(url);
                 const data = await res.json();
                 
-                // Construção do Cabeçalho e Botão de Criação
                 let createActionHTML = '';
-                if(resource !== 'nodes') { // Não permitimos criar nodes manualmente por aqui
+                if(resource !== 'nodes') {
                     createActionHTML = `
                         <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6 flex flex-wrap gap-4 items-end fade-in">
                             <div class="flex-1 min-w-[200px]">
@@ -196,7 +274,7 @@
                             </div>` : ''}
 
                             <button onclick="createResource('${resource}')" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded transition font-medium">
-                                <i class="fas fa-plus mr-2"></i> Criar
+                                <i class="fas fa-plus mr-2"></i> Criar em <span class="underline">${resource === 'namespaces' ? 'Cluster' : selectedNamespace}</span>
                             </button>
                         </div>
                     `;
@@ -207,17 +285,16 @@
                         <div class="bg-card border border-slate-700 rounded-lg p-10 text-center fade-in">
                             <i class="fas fa-box-open text-slate-600 text-5xl mb-4"></i>
                             <h3 class="text-xl text-white font-medium mb-2">Nada Encontrado</h3>
-                            <p class="text-slate-400">Não existem registos de ${resource} no cluster mas pode criar um usando o formulário acima!</p>
+                            <p class="text-slate-400">Não existem registos em <span class="text-blue-400">${selectedNamespace}</span>.</p>
                         </div>`;
                     return;
                 }
 
                 const keys = Object.keys(data[0]);
-                
                 let html = createActionHTML + `
                 <div class="fade-in">
                     <div class="flex justify-between items-center mb-4">
-                        <p class="text-slate-400">A mostrar <span class="text-white font-bold">${data.length}</span> resultados.</p>
+                        <p class="text-slate-400">A mostrar <span class="text-white font-bold">${data.length}</span> resultados em <span class="text-blue-400 font-bold">${resource === 'nodes' || resource === 'namespaces' ? 'Cluster' : selectedNamespace}</span>.</p>
                     </div>
                     <div class="bg-card rounded-lg border border-slate-700 overflow-hidden shadow-xl">
                         <div class="overflow-x-auto">
@@ -225,7 +302,7 @@
                                 <thead class="bg-slate-800 text-slate-400 text-xs uppercase font-semibold border-b border-slate-700">
                                     <tr>
                                         <th class="px-6 py-4">Nome</th>
-                                        ${keys.filter(k => k !== 'name' && k !== 'created' && k !== 'ip').map(k => `<th class="px-6 py-4">${k}</th>`).join('')}
+                                        ${keys.filter(k => k !== 'name' && k !== 'created' && k !== 'ip' && k !== 'namespace').map(k => `<th class="px-6 py-4">${k}</th>`).join('')}
                                         <th class="px-6 py-4 text-right">Ação</th>
                                     </tr>
                                 </thead>
@@ -241,7 +318,7 @@
                     html += `
                         <tr class="hover:bg-slate-700/30 transition">
                             <td class="px-6 py-4 font-medium text-white">${item.name}</td>
-                            ${keys.filter(k => k !== 'name' && k !== 'created' && k !== 'ip').map(key => {
+                            ${keys.filter(k => k !== 'name' && k !== 'created' && k !== 'ip' && k !== 'namespace').map(key => {
                                 let val = item[key] ?? '-';
                                 if(key === 'status') return `<td class="px-6 py-4"><span class="${statusColor}">${val}</span></td>`;
                                 if(Array.isArray(val)) return `<td class="px-6 py-4 text-slate-400">${val.join(', ') || '-'}</td>`;
@@ -260,19 +337,16 @@
 
                 html += `</tbody></table></div></div></div>`;
                 document.getElementById('mainContent').innerHTML = html;
-
             } catch (err) { showToast("Falha ao comunicar com orquestrador", "error"); }
         }
 
         async function createResource(resourceType) {
             let name = document.getElementById('createNewName').value;
-            
             if(!name) return showToast("Por favor insira um nome", "error");
-
-            // Limpa o Nome para os padrões do Kubernetes (ex: 'Meu Pod' -> 'meu-pod')
             name = name.toLowerCase().replace(/[^a-z0-9-.]/g, '-').replace(/-+/g, '-');
             
-            let payload = { namespace: "default", name: name };
+            let payload = { namespace: selectedNamespace, name: name };
+            if(resourceType === 'namespaces') delete payload.namespace;
 
             if(resourceType === 'pods' || resourceType === 'deployments') {
                 payload.image = document.getElementById('createNewImage').value;
@@ -291,6 +365,7 @@
                 payload.port = parseInt(document.getElementById('createIngressPort').value);
                 if(!payload.serviceName) return showToast("Indique o nome do serviço", "error");
             }
+
             try {
                 const res = await fetch(`${apiBase}/${resourceType}`, {
                     method: 'POST',
@@ -300,20 +375,26 @@
 
                 if(res.ok) {
                     showToast(`${name} criado com sucesso!`, "success");
-                    loadCurrentView(); // recarrega a tabela
+                    loadCurrentView();
+                    if(resourceType === 'namespaces') loadNamespaceOptions();
                 } else {
-                    const err = await res.json();
-                    showToast(`Falha a criar: O nome é inválido.`, "error");
+                    showToast(`Falha a criar.`, "error");
                 }
             } catch (err) { showToast("Erro de rede.", "error"); }
         }
 
         async function deleteResource(resource, name) {
-            if(!confirm(`⚠️ Atenção: Vai apagar permanentemente o recurso '${name}'. Deseja continuar?`)) return;
+            if(!confirm(`⚠️ Atenção: Vai apagar permanentemente '${name}'. Deseja continuar?`)) return;
             try {
-                const res = await fetch(`${apiBase}/${resource}/${name}`, { method: 'DELETE' });
+                let url = `${apiBase}/${resource}/${name}`;
+                if(!['namespaces', 'nodes'].includes(resource)) {
+                    url += `?ns=${selectedNamespace}`;
+                }
+
+                const res = await fetch(url, { method: 'DELETE' });
                 if(res.ok) {
                     showToast(`${name} apagado.`, "success");
+                    if(resource === 'namespaces') loadNamespaceOptions();
                     setTimeout(loadCurrentView, 500);
                 } else { showToast(`Falha ao apagar.`, "error"); }
             } catch (err) { showToast("Erro de rede.", "error"); }

@@ -235,6 +235,37 @@ public class KubernetesService
         var namespaces = await _client.CoreV1.ListNamespaceAsync();
         var deployments = await _client.AppsV1.ListDeploymentForAllNamespacesAsync();
 
+        // Cálculo de Recursos (CPU e Memória)
+        long totalCpuMillicores = 0;
+        long allocatableCpuMillicores = 0;
+        long totalMemoryBytes = 0;
+        long allocatableMemoryBytes = 0;
+
+        foreach (var node in nodes.Items)
+        {
+            if (node.Status.Capacity != null)
+            {
+                if (node.Status.Capacity.TryGetValue("cpu", out var cpuCap)) 
+                    totalCpuMillicores += ParseCpu(cpuCap.ToString());
+                if (node.Status.Capacity.TryGetValue("memory", out var memCap)) 
+                    totalMemoryBytes += ParseMemory(memCap.ToString());
+            }
+
+            if (node.Status.Allocatable != null)
+            {
+                if (node.Status.Allocatable.TryGetValue("cpu", out var cpuAlloc)) 
+                    allocatableCpuMillicores += ParseCpu(cpuAlloc.ToString());
+                if (node.Status.Allocatable.TryGetValue("memory", out var memAlloc)) 
+                    allocatableMemoryBytes += ParseMemory(memAlloc.ToString());
+            }
+        }
+
+        // Estimativa simples de uso: Capacity - Allocatable (na verdade Allocatable é o que sobra, 
+        // mas em sistemas como Minikube, Capacity costuma ser o total do host e Allocatable o que o K8s pode usar)
+        // Para uma dashboard mais real, calculamos a % de alocação.
+        double cpuUsagePercent = totalCpuMillicores > 0 ? 100 - ((double)allocatableCpuMillicores / totalCpuMillicores * 100) : 0;
+        double memUsagePercent = totalMemoryBytes > 0 ? 100 - ((double)allocatableMemoryBytes / totalMemoryBytes * 100) : 0;
+
         return new
         {
             totalNodes = nodes.Items.Count,
@@ -243,7 +274,25 @@ public class KubernetesService
             totalPods = pods.Items.Count,
             runningPods = pods.Items.Count(p => p.Status.Phase == "Running"),
             totalNamespaces = namespaces.Items.Count,
-            totalDeployments = deployments.Items.Count
+            totalDeployments = deployments.Items.Count,
+            cpuUsage = Math.Round(cpuUsagePercent, 1),
+            memUsage = Math.Round(memUsagePercent, 1),
+            totalCpu = $"{totalCpuMillicores / 1000.0} Cores",
+            totalMem = $"{Math.Round(totalMemoryBytes / 1024.0 / 1024.0 / 1024.0, 1)} GB"
         };
+    }
+
+    private long ParseCpu(string cpu)
+    {
+        if (cpu.EndsWith("m")) return long.Parse(cpu.TrimEnd('m'));
+        return (long)(double.Parse(cpu) * 1000);
+    }
+
+    private long ParseMemory(string mem)
+    {
+        if (mem.EndsWith("Ki")) return long.Parse(mem.Replace("Ki", "")) * 1024;
+        if (mem.EndsWith("Mi")) return long.Parse(mem.Replace("Mi", "")) * 1024 * 1024;
+        if (mem.EndsWith("Gi")) return long.Parse(mem.Replace("Gi", "")) * 1024 * 1024 * 1024;
+        return long.Parse(mem);
     }
 }
