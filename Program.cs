@@ -1,15 +1,15 @@
-using k8s;
+﻿using k8s;
 using KubeManager.API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Adicionar servi�os aos contentores.
+// Adicionar serviços aos contentores.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// ----- CONFIGURA��O DO KUBERNETES -----
-// Vai procurar a configura��o automaticamente no ~/.kube/config (gerada pelo Minikube)
+// ----- CONFIGURAÇÃO DO KUBERNETES -----
+// Vai procurar a configuração automaticamente no ~/.kube/config (gerada pelo Minikube)
 var kubeConfig = KubernetesClientConfiguration.BuildDefaultConfig();
 builder.Services.AddSingleton<IKubernetes>(new Kubernetes(kubeConfig));
 builder.Services.AddScoped<KubernetesService>();
@@ -26,6 +26,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseAuthorization();
+
+// ── ADICIONE ESTAS DUAS LINHAS ──
+app.UseDefaultFiles(); // Procura automaticamente por ficheiros index.html
+app.UseStaticFiles();  // Permite servir a pasta estática "wwwroot"
+// ────────────────────────────────
+
 app.MapControllers();
 
 app.Run();

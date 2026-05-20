@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KubeManager | Enterprise Orchestrator</title>
+    <!-- Tailwind CSS (Uma framework moderna usada em produção) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        k8s: '#326CE5', // A cor oficial do Kubernetes
+                        darkbase: '#111827',
+                        card: '#1F2937',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0f172a; color: #f3f4f6; }
+        .sidebar { background-color: #1e293b; border-right: 1px solid #334155; }
+        .nav-item { transition: all 0.2s; border-left: 3px solid transparent; }
+        .nav-item:hover, .nav-item.active { background-color: #326CE520; color: #60a5fa; border-left-color: #326ce5; }
+        .fade-in { animation: fadeIn 0.4s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Scrollbar customizada */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden text-sm font-sans">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar w-64 flex-shrink-0 hidden md:flex flex-col">
+        <div class="h-16 flex items-center px-6 border-b border-slate-700">
+            <svg class="w-8 h-8 text-blue-500 mr-3" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+            <span class="text-xl font-bold tracking-wider text-white">Kube<span class="text-blue-500">Manager</span></span>
+        </div>
+        
+        <div class="p-4 uppercase text-xs font-semibold text-slate-500 tracking-wider">Gestão do Cluster</div>
+        
+        <nav class="flex-1 overflow-y-auto w-full">
+            <a href="#" onclick="loadView('dashboard', this)" class="nav-item active flex items-center px-6 py-3 text-slate-300">
+                <i class="fas fa-chart-pie w-6"></i> Visão Geral
+            </a>
+            <a href="#" onclick="loadView('nodes', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
+                <i class="fas fa-server w-6"></i> Nodes
+            </a>
+            <a href="#" onclick="loadView('namespaces', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
+                <i class="fas fa-folder-open w-6"></i> Namespaces
+            </a>
+            <a href="#" onclick="loadView('pods', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
+                <i class="fas fa-cubes w-6"></i> Pods
+            </a>
+            <a href="#" onclick="loadView('deployments', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
+                <i class="fas fa-layer-group w-6"></i> Deployments
+            </a>
+            <a href="#" onclick="loadView('services', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
+                <i class="fas fa-network-wired w-6"></i> Services
+            </a>
+        </nav>
+        
+        <div class="p-4 border-t border-slate-700 text-xs text-slate-500 text-center">
+            TL2 LTI - 25/26
+        </div>
+    </aside>
+
+    <!-- ÁREA PRINCIPAL -->
+    <main class="flex-1 flex flex-col overflow-hidden relative">
+        <!-- HEADER SUPERIOR -->
+        <header class="h-16 flex items-center justify-between px-8 bg-slate-800 border-b border-slate-700 z-10 shadow-md">
+            <h1 id="pageTitle" class="text-2xl font-semibold text-white tracking-wide">Visão Geral</h1>
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center bg-slate-900 rounded-full px-3 py-1 border border-slate-700">
+                    <span class="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span>
+                    <span class="text-slate-300 text-xs">Ligado ao Minikube</span>
+                </div>
+                <button onclick="loadCurrentView()" class="p-2 text-slate-400 hover:text-white rounded transition bg-slate-700 hover:bg-slate-600">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- CAIXA DE CONTEÚDO -->
+        <div class="flex-1 overflow-y-auto p-8 bg-slate-900 fade-in" id="mainContent">
+            <!-- Spinner -->
+            <div class="flex justify-center items-center h-full">
+                <i class="fas fa-circle-notch fa-spin text-blue-500 text-4xl"></i>
+            </div>
+        </div>
+
+        <!-- MENSAGENS FLUTUANTES (TOASTS) -->
+        <div id="toastArea" class="fixed bottom-4 right-4 z-50 flex flex-col space-y-2"></div>
+    </main>
+
+    <!-- CORE JAVASCRIPT LOGIC -->
+    <script>
+        const apiBase = '/api';
+        let currentView = 'dashboard';
+
+        function loadView(viewName, element) {
+            currentView = viewName;
+            
+            if(element) {
+                document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active', 'bg-slate-800', 'text-blue-400'));
+                element.classList.add('active', 'bg-slate-800', 'text-blue-400');
+            }
+            
+            const titles = { 'dashboard': 'Visão Geral do Cluster', 'nodes': 'Gestão de Nodes', 'namespaces': 'Espaços Lógicos (Namespaces)', 'pods': 'Instâncias (Pods)', 'deployments': 'Aplicações (Deployments)', 'services': 'Rede (Services)' };
+            document.getElementById('pageTitle').innerText = titles[viewName];
+            
+            document.getElementById('mainContent').innerHTML = `
+                <div class="flex h-64 justify-center items-center flex-col text-slate-400">
+                    <i class="fas fa-circle-notch fa-spin text-blue-500 text-4xl mb-4"></i>
+                    <p>A comunicar com o orquestrador...</p>
+                </div>`;
+            
+            if(viewName === 'dashboard') loadDashboardData();
+            else loadListData(viewName);
+        }
+
+        function loadCurrentView() { loadView(currentView, null); }
+
+        async function loadDashboardData() {
+            try {
+                const res = await fetch(`${apiBase}/cluster`);
+                const data = await res.json();
+                
+                document.getElementById('mainContent').innerHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 fade-in">
+                        <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg flex items-center justify-between">
+                            <div><p class="text-slate-400 font-medium mb-1">Total de Nodes</p><h3 class="text-4xl font-bold text-white">${data.totalNodes}</h3></div>
+                            <div class="w-14 h-14 bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-400"><i class="fas fa-server text-2xl"></i></div>
+                        </div>
+                        <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg flex items-center justify-between">
+                            <div><p class="text-slate-400 font-medium mb-1">Pods (Run/Total)</p><h3 class="text-4xl font-bold text-white">${data.runningPods} <span class="text-xl text-slate-500">/ ${data.totalPods}</span></h3></div>
+                            <div class="w-14 h-14 bg-green-500/20 rounded-full flex items-center justify-center text-green-400"><i class="fas fa-cubes text-2xl"></i></div>
+                        </div>
+                        <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg flex items-center justify-between">
+                            <div><p class="text-slate-400 font-medium mb-1">Deployments</p><h3 class="text-4xl font-bold text-white">${data.totalDeployments}</h3></div>
+                            <div class="w-14 h-14 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-400"><i class="fas fa-layer-group text-2xl"></i></div>
+                        </div>
+                        <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg flex items-center justify-between">
+                            <div><p class="text-slate-400 font-medium mb-1">Namespaces</p><h3 class="text-4xl font-bold text-white">${data.totalNamespaces}</h3></div>
+                            <div class="w-14 h-14 bg-rose-500/20 rounded-full flex items-center justify-center text-rose-400"><i class="fas fa-folder text-2xl"></i></div>
+                        </div>
+                    </div>
+                `;
+            } catch (err) { showToast("Falha ao comunicar com API", "error"); }
+        }
+
+        async function loadListData(resource) {
+            try {
+                const res = await fetch(`${apiBase}/${resource}`);
+                const data = await res.json();
+                
+                // Construção do Cabeçalho e Botão de Criação
+                let createActionHTML = '';
+                if(resource !== 'nodes') { // Não permitimos criar nodes manualmente por aqui
+                    createActionHTML = `
+                        <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6 flex gap-4 items-end fade-in">
+                            <div class="flex-1">
+                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Nome do ${resource}</label>
+                                <input type="text" id="createNewName" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="Ex: meu-servidor">
+                            </div>
+                            <div class="flex-1 ${resource === 'namespaces' ? 'hidden' : ''}">
+                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Imagem Docker</label>
+                                <input type="text" id="createNewImage" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="Ex: nginx" value="nginx">
+                            </div>
+                            <button onclick="createResource('${resource}')" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded transition font-medium">
+                                <i class="fas fa-plus mr-2"></i> Criar
+                            </button>
+                        </div>
+                    `;
+                }
+
+                if(data.length === 0) {
+                    document.getElementById('mainContent').innerHTML = createActionHTML + `
+                        <div class="bg-card border border-slate-700 rounded-lg p-10 text-center fade-in">
+                            <i class="fas fa-box-open text-slate-600 text-5xl mb-4"></i>
+                            <h3 class="text-xl text-white font-medium mb-2">Nada Encontrado</h3>
+                            <p class="text-slate-400">Não existem registos de ${resource} no cluster mas pode criar um usando o formulário acima!</p>
+                        </div>`;
+                    return;
+                }
+
+                const keys = Object.keys(data[0]);
+                
+                let html = createActionHTML + `
+                <div class="fade-in">
+                    <div class="flex justify-between items-center mb-4">
+                        <p class="text-slate-400">A mostrar <span class="text-white font-bold">${data.length}</span> resultados.</p>
+                    </div>
+                    <div class="bg-card rounded-lg border border-slate-700 overflow-hidden shadow-xl">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-slate-300">
+                                <thead class="bg-slate-800 text-slate-400 text-xs uppercase font-semibold border-b border-slate-700">
+                                    <tr>
+                                        <th class="px-6 py-4">Nome</th>
+                                        ${keys.filter(k => k !== 'name' && k !== 'created' && k !== 'ip').map(k => `<th class="px-6 py-4">${k}</th>`).join('')}
+                                        <th class="px-6 py-4 text-right">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-700/50">
+                `;
+
+                data.forEach(item => {
+                    let statusColor = "text-slate-300";
+                    if(item.status === 'Running' || item.status === 'True' || item.status === 'Active') statusColor = "text-green-400 bg-green-400/10 px-2 py-1 rounded-full text-xs font-bold";
+                    if(item.status === 'Pending' || item.status === 'False' || item.status === 'ContainerCreating') statusColor = "text-amber-400 bg-amber-400/10 px-2 py-1 rounded-full text-xs font-bold animate-pulse";
+                    if(item.status === 'Failed') statusColor = "text-red-400 bg-red-400/10 px-2 py-1 rounded-full text-xs font-bold";
+
+                    html += `
+                        <tr class="hover:bg-slate-700/30 transition">
+                            <td class="px-6 py-4 font-medium text-white">${item.name}</td>
+                            ${keys.filter(k => k !== 'name' && k !== 'created' && k !== 'ip').map(key => {
+                                let val = item[key] ?? '-';
+                                if(key === 'status') return `<td class="px-6 py-4"><span class="${statusColor}">${val}</span></td>`;
+                                return `<td class="px-6 py-4 text-slate-400">${val}</td>`;
+                            }).join('')}
+                            <td class="px-6 py-4 text-right">
+                                ${resource === 'nodes' ? 
+                                `<span class="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded border border-slate-700">Sistema</span>` :
+                                `<button onclick="deleteResource('${resource}','${item.name}')" class="text-red-400 hover:text-red-300 bg-red-400/10 hover:bg-red-400/20 p-2 rounded transition" title="Apagar">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>`}
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += `</tbody></table></div></div></div>`;
+                document.getElementById('mainContent').innerHTML = html;
+
+            } catch (err) { showToast("Falha ao comunicar com orquestrador", "error"); }
+        }
+
+        async function createResource(resourceType) {
+            let name = document.getElementById('createNewName').value;
+            const image = document.getElementById('createNewImage')?.value;
+
+            if(!name) return showToast("Por favor insira um nome", "error");
+
+            // Limpa o Nome para os padrões do Kubernetes (ex: 'Meu Pod' -> 'meu-pod')
+            name = name.toLowerCase().replace(/[^a-z0-9-.]/g, '-').replace(/-+/g, '-');
+            
+            let payload = {};
+            if(resourceType === 'namespaces') payload = { namespace: "default", name: name };
+            if(resourceType === 'pods') payload = { namespace: "default", name: name, image: image };
+            if(resourceType === 'deployments') payload = { namespace: "default", name: name, image: image, replicas: 1 };
+            if(resourceType === 'services') payload = { namespace: "default", name: name, appLabel: name, port: 80, targetPort: 80 }; 
+
+            try {
+                const res = await fetch(`${apiBase}/${resourceType}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if(res.ok) {
+                    showToast(`${name} criado com sucesso!`, "success");
+                    loadCurrentView(); // recarrega a tabela
+                } else {
+                    const err = await res.json();
+                    showToast(`Falha a criar: O nome é inválido.`, "error");
+                }
+            } catch (err) { showToast("Erro de rede.", "error"); }
+        }
+
+        async function deleteResource(resource, name) {
+            if(!confirm(`⚠️ Atenção: Vai apagar permanentemente o recurso '${name}'. Deseja continuar?`)) return;
+            try {
+                const res = await fetch(`${apiBase}/${resource}/${name}`, { method: 'DELETE' });
+                if(res.ok) {
+                    showToast(`${name} apagado.`, "success");
+                    setTimeout(loadCurrentView, 500);
+                } else { showToast(`Falha ao apagar.`, "error"); }
+            } catch (err) { showToast("Erro de rede.", "error"); }
+        }
+
+        function showToast(msg, type="info") {
+            const toast = document.createElement('div');
+            const colorClass = type === 'error' ? 'bg-red-500' : (type === 'success' ? 'bg-green-500' : 'bg-blue-500');
+            const icon = type === 'error' ? 'fa-exclamation-triangle' : (type === 'success' ? 'fa-check-circle' : 'fa-info-circle');
+            toast.className = `${colorClass} text-white px-4 py-3 rounded shadow-lg flex items-center space-x-3 fade-in w-72`;
+            toast.innerHTML = `<i class="fas ${icon}"></i> <span>${msg}</span>`;
+            document.getElementById('toastArea').appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 3000);
+        }
+
+        window.onload = () => loadDashboardData();
+    </script>
+</body>
+</html>
