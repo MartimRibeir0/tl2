@@ -172,6 +172,61 @@ public class KubernetesService
     public async Task DeleteServiceAsync(string ns, string name)
         => await _client.CoreV1.DeleteNamespacedServiceAsync(name, ns);
 
+    // ── INGRESSES ──────────────────────────────────────────
+    public async Task<object> GetIngressesAsync(string ns = "default")
+    {
+        var ingresses = await _client.NetworkingV1.ListNamespacedIngressAsync(ns);
+        return ingresses.Items.Select(i => new
+        {
+            name = i.Metadata.Name,
+            @namespace = i.Metadata.NamespaceProperty,
+            hosts = i.Spec.Rules?.Select(r => r.Host),
+            address = i.Status.LoadBalancer?.Ingress?.FirstOrDefault()?.Ip ?? i.Status.LoadBalancer?.Ingress?.FirstOrDefault()?.Hostname,
+            created = i.Metadata.CreationTimestamp
+        });
+    }
+
+    public async Task CreateIngressAsync(string ns, string name, string host, string serviceName, int port)
+    {
+        var ingress = new V1Ingress
+        {
+            Metadata = new V1ObjectMeta { Name = name, NamespaceProperty = ns },
+            Spec = new V1IngressSpec
+            {
+                Rules = new List<V1IngressRule>
+                {
+                    new V1IngressRule
+                    {
+                        Host = host,
+                        Http = new V1HTTPIngressRuleValue
+                        {
+                            Paths = new List<V1HTTPIngressPath>
+                            {
+                                new V1HTTPIngressPath
+                                {
+                                    Path = "/",
+                                    PathType = "Prefix",
+                                    Backend = new V1IngressBackend
+                                    {
+                                        Service = new V1IngressServiceBackend
+                                        {
+                                            Name = serviceName,
+                                            Port = new V1ServiceBackendPort { Number = port }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        await _client.NetworkingV1.CreateNamespacedIngressAsync(ingress, ns);
+    }
+
+    public async Task DeleteIngressAsync(string ns, string name)
+        => await _client.NetworkingV1.DeleteNamespacedIngressAsync(name, ns);
+
     // ── DASHBOARD / CLUSTER INFO ───────────────────────────
     public async Task<object> GetClusterInfoAsync()
     {

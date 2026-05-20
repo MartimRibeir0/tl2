@@ -4,3 +4,4 @@ public record CreatePodDto(string Namespace, string Name, string Image);
 public record CreateDeploymentDto(string Namespace, string Name, string Image, int Replicas = 1);
 public record CreateNamespaceDto(string Name);
 public record CreateServiceDto(string Namespace, string Name, string AppLabel, int Port, int TargetPort);
+public record CreateIngressDto(string Namespace, string Name, string Host, string ServiceName, int Port);

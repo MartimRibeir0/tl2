@@ -66,6 +66,9 @@
             <a href="#" onclick="loadView('services', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
                 <i class="fas fa-network-wired w-6"></i> Services
             </a>
+            <a href="#" onclick="loadView('ingresses', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
+                <i class="fas fa-route w-6"></i> Ingresses
+            </a>
         </nav>
         
         <div class="p-4 border-t border-slate-700 text-xs text-slate-500 text-center">
@@ -114,7 +117,7 @@
                 element.classList.add('active', 'bg-slate-800', 'text-blue-400');
             }
             
-            const titles = { 'dashboard': 'Visão Geral do Cluster', 'nodes': 'Gestão de Nodes', 'namespaces': 'Espaços Lógicos (Namespaces)', 'pods': 'Instâncias (Pods)', 'deployments': 'Aplicações (Deployments)', 'services': 'Rede (Services)' };
+            const titles = { 'dashboard': 'Visão Geral do Cluster', 'nodes': 'Gestão de Nodes', 'namespaces': 'Espaços Lógicos (Namespaces)', 'pods': 'Instâncias (Pods)', 'deployments': 'Aplicações (Deployments)', 'services': 'Rede (Services)', 'ingresses': 'Regras de Acesso (Ingress)' };
             document.getElementById('pageTitle').innerText = titles[viewName];
             
             document.getElementById('mainContent').innerHTML = `
@@ -166,15 +169,32 @@
                 let createActionHTML = '';
                 if(resource !== 'nodes') { // Não permitimos criar nodes manualmente por aqui
                     createActionHTML = `
-                        <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6 flex gap-4 items-end fade-in">
-                            <div class="flex-1">
+                        <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6 flex flex-wrap gap-4 items-end fade-in">
+                            <div class="flex-1 min-w-[200px]">
                                 <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Nome do ${resource}</label>
-                                <input type="text" id="createNewName" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="Ex: meu-servidor">
+                                <input type="text" id="createNewName" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="Ex: meu-recurso">
                             </div>
-                            <div class="flex-1 ${resource === 'namespaces' ? 'hidden' : ''}">
+                            
+                            ${resource === 'pods' || resource === 'deployments' ? `
+                            <div class="flex-1 min-w-[200px]">
                                 <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Imagem Docker</label>
                                 <input type="text" id="createNewImage" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="Ex: nginx" value="nginx">
+                            </div>` : ''}
+
+                            ${resource === 'ingresses' ? `
+                            <div class="flex-1 min-w-[150px]">
+                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Host (Domínio)</label>
+                                <input type="text" id="createIngressHost" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="Ex: app.local" value="app.local">
                             </div>
+                            <div class="flex-1 min-w-[150px]">
+                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Nome do Serviço</label>
+                                <input type="text" id="createIngressSvc" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="Ex: meu-servico">
+                            </div>
+                            <div class="w-24">
+                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Porta</label>
+                                <input type="number" id="createIngressPort" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" value="80">
+                            </div>` : ''}
+
                             <button onclick="createResource('${resource}')" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded transition font-medium">
                                 <i class="fas fa-plus mr-2"></i> Criar
                             </button>
@@ -224,6 +244,7 @@
                             ${keys.filter(k => k !== 'name' && k !== 'created' && k !== 'ip').map(key => {
                                 let val = item[key] ?? '-';
                                 if(key === 'status') return `<td class="px-6 py-4"><span class="${statusColor}">${val}</span></td>`;
+                                if(Array.isArray(val)) return `<td class="px-6 py-4 text-slate-400">${val.join(', ') || '-'}</td>`;
                                 return `<td class="px-6 py-4 text-slate-400">${val}</td>`;
                             }).join('')}
                             <td class="px-6 py-4 text-right">
@@ -245,19 +266,31 @@
 
         async function createResource(resourceType) {
             let name = document.getElementById('createNewName').value;
-            const image = document.getElementById('createNewImage')?.value;
-
+            
             if(!name) return showToast("Por favor insira um nome", "error");
 
             // Limpa o Nome para os padrões do Kubernetes (ex: 'Meu Pod' -> 'meu-pod')
             name = name.toLowerCase().replace(/[^a-z0-9-.]/g, '-').replace(/-+/g, '-');
             
-            let payload = {};
-            if(resourceType === 'namespaces') payload = { namespace: "default", name: name };
-            if(resourceType === 'pods') payload = { namespace: "default", name: name, image: image };
-            if(resourceType === 'deployments') payload = { namespace: "default", name: name, image: image, replicas: 1 };
-            if(resourceType === 'services') payload = { namespace: "default", name: name, appLabel: name, port: 80, targetPort: 80 }; 
+            let payload = { namespace: "default", name: name };
 
+            if(resourceType === 'pods' || resourceType === 'deployments') {
+                payload.image = document.getElementById('createNewImage').value;
+                if(resourceType === 'deployments') payload.replicas = 1;
+            }
+
+            if(resourceType === 'services') {
+                payload.appLabel = name;
+                payload.port = 80;
+                payload.targetPort = 80;
+            }
+
+            if(resourceType === 'ingresses') {
+                payload.host = document.getElementById('createIngressHost').value;
+                payload.serviceName = document.getElementById('createIngressSvc').value;
+                payload.port = parseInt(document.getElementById('createIngressPort').value);
+                if(!payload.serviceName) return showToast("Indique o nome do serviço", "error");
+            }
             try {
                 const res = await fetch(`${apiBase}/${resourceType}`, {
                     method: 'POST',
