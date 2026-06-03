@@ -16,11 +16,12 @@ public class ServicesController : ControllerBase
         => Ok(await _svc.GetServicesAsync(ns));
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] CreateServiceDto dto)
+    public async Task<IActionResult> Create(CreateServiceDto dto)
     {
-        await _svc.CreateServiceAsync(dto.Namespace, dto.Name, dto.AppLabel, dto.Port, dto.TargetPort);
+        await _svc.CreateServiceAsync(dto.Namespace, dto.Name, dto.AppLabel, dto.Port, dto.TargetPort, dto.Type, dto.NodePort);
         return Ok();
     }
+
 
     [HttpDelete("{name}")]
     public async Task<IActionResult> Delete(string name, [FromQuery] string ns = "default")

@@ -7,6 +7,9 @@
     <!-- Tailwind CSS (Uma framework moderna usada em produção) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Bibliotecas para UX Premium -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.15.2/ace.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -69,6 +72,14 @@
             <a href="#" onclick="loadView('ingresses', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
                 <i class="fas fa-route w-6"></i> Ingresses
             </a>
+            <a href="#" onclick="loadView('events', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
+                <i class="fas fa-bell w-6"></i> Eventos
+            </a>
+
+            <div class="p-4 uppercase text-xs font-semibold text-slate-500 tracking-wider border-t border-slate-700 mt-4">Infraestrutura</div>
+            <a href="#" onclick="loadView('vms', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
+                <i class="fas fa-desktop w-6"></i> Máquinas Virtuais
+            </a>
         </nav>
         
         <div class="p-4 border-t border-slate-700 text-xs text-slate-500 text-center">
@@ -93,7 +104,7 @@
 
                 <div class="flex items-center bg-slate-900 rounded-full px-3 py-1 border border-slate-700">
                     <span class="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span>
-                    <span class="text-slate-300 text-xs">Ligado ao Minikube</span>
+                    <span class="text-slate-300 text-xs">Sistema Operacional</span>
                 </div>
                 <button onclick="loadCurrentView()" class="p-2 text-slate-400 hover:text-white rounded transition bg-slate-700 hover:bg-slate-600">
                     <i class="fas fa-sync-alt"></i>
@@ -111,6 +122,67 @@
 
         <!-- MENSAGENS FLUTUANTES (TOASTS) -->
         <div id="toastArea" class="fixed bottom-4 right-4 z-50 flex flex-col space-y-2"></div>
+
+        <!-- MODAL DE LOGS -->
+        <div id="logModal" class="fixed inset-0 bg-black/80 z-[100] hidden flex items-center justify-center p-4">
+            <div class="bg-slate-800 w-full max-w-4xl h-[80vh] rounded-lg border border-slate-700 flex flex-col shadow-2xl">
+                <div class="p-4 border-b border-slate-700 flex justify-between items-center">
+                    <h3 class="text-white font-bold"><i class="fas fa-terminal mr-2"></i> Logs do Pod: <span id="logModalTitle"></span></h3>
+                    <button onclick="closeLogModal()" class="text-slate-400 hover:text-white"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="logContent" class="flex-1 p-4 font-mono text-xs overflow-y-auto bg-black text-green-400 whitespace-pre-wrap"></div>
+                <div class="p-4 border-t border-slate-700 text-right">
+                    <button onclick="closeLogModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded">Fechar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL DO EDITOR YAML -->
+        <div id="yamlModal" class="fixed inset-0 bg-black/80 z-[100] hidden flex items-center justify-center p-4">
+            <div class="bg-slate-800 w-full max-w-5xl h-[90vh] rounded-lg border border-slate-700 flex flex-col shadow-2xl">
+                <div class="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
+                    <h3 class="text-white font-bold"><i class="fas fa-file-code mr-2 text-blue-400"></i> Editor YAML: <span id="yamlModalTitle" class="font-mono text-sm text-slate-300"></span></h3>
+                    <div class="space-x-2">
+                        <button onclick="saveYaml()" class="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded text-xs font-bold transition">
+                            <i class="fas fa-save mr-2"></i> APLICAR ALTERAÇÕES
+                        </button>
+                        <button onclick="closeYamlModal()" class="text-slate-400 hover:text-white p-1"><i class="fas fa-times"></i></button>
+                    </div>
+                </div>
+                <div id="yamlEditor" class="flex-1 w-full"></div>
+                <div class="p-3 border-t border-slate-700 bg-slate-900 flex justify-between items-center text-[10px] text-slate-500">
+                    <span><i class="fas fa-info-circle mr-1"></i> Use com cuidado. Alterações inválidas podem causar falhas no recurso.</span>
+                    <span class="font-mono uppercase">Syntax: Kubernetes YAML</span>
+                </div>
+            </div>
+        </div>
+        <!-- MODAL DE CLONAGEM -->
+        <div id="cloneModal" class="fixed inset-0 bg-black/80 z-[100] hidden flex items-center justify-center p-4">
+            <div class="bg-slate-800 w-full max-w-md rounded-lg border border-slate-700 flex flex-col shadow-2xl">
+                <div class="p-4 border-b border-slate-700 flex justify-between items-center">
+                    <h3 class="text-white font-bold"><i class="fas fa-copy mr-2"></i> Clonar VM: <span id="cloneModalTitle"></span></h3>
+                    <button onclick="closeCloneModal()" class="text-slate-400 hover:text-white"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Novo ID da VM</label>
+                        <input type="number" id="cloneNewId" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Nome da Nova VM</label>
+                        <input type="text" id="cloneNewName" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Node de Destino</label>
+                        <input type="text" id="cloneTargetNode" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:outline-none">
+                    </div>
+                </div>
+                <div class="p-4 border-t border-slate-700 text-right space-x-2">
+                    <button onclick="closeCloneModal()" class="text-slate-400 hover:text-white px-4 py-2">Cancelar</button>
+                    <button id="confirmCloneBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded">Clonar Agora</button>
+                </div>
+            </div>
+        </div>
     </main>
 
     <!-- CORE JAVASCRIPT LOGIC -->
@@ -118,8 +190,27 @@
         const apiBase = '/api';
         let currentView = 'dashboard';
         let selectedNamespace = 'default';
+        let currentCloneData = null;
+        let cloningVmIds = new Set();
+        let yamlEditor = null;
+        let currentYamlTarget = null;
+        let cpuChart = null;
+        let memChart = null;
 
-        // Carrega a lista de namespaces para o seletor global
+        // Inicializar Editor YAML (Ace)
+        function initYamlEditor() {
+            if (!yamlEditor) {
+                yamlEditor = ace.edit("yamlEditor");
+                yamlEditor.setTheme("ace/theme/tomorrow_night_eighties");
+                yamlEditor.session.setMode("ace/mode/yaml");
+                yamlEditor.setOptions({
+                    fontSize: "13px",
+                    showPrintMargin: false,
+                    useSoftTabs: true,
+                    tabSize: 2
+                });
+            }
+        }
         async function loadNamespaceOptions() {
             try {
                 const res = await fetch(`${apiBase}/namespaces`);
@@ -151,12 +242,22 @@
                 element.classList.add('active', 'bg-slate-800', 'text-blue-400');
             }
             
-            const titles = { 'dashboard': 'Visão Geral do Cluster', 'nodes': 'Gestão de Nodes', 'namespaces': 'Espaços Lógicos (Namespaces)', 'pods': 'Instâncias (Pods)', 'deployments': 'Aplicações (Deployments)', 'services': 'Rede (Services)', 'ingresses': 'Regras de Acesso (Ingress)' };
-            document.getElementById('pageTitle').innerText = titles[viewName];
+            const titles = { 
+                'dashboard': 'Visão Geral do Cluster', 
+                'nodes': 'Gestão de Nodes', 
+                'namespaces': 'Espaços Lógicos (Namespaces)', 
+                'pods': 'Instâncias (Pods)', 
+                'deployments': 'Aplicações (Deployments)', 
+                'services': 'Rede (Services)', 
+                'ingresses': 'Regras de Acesso (Ingress)',
+                'vms': 'Máquinas Virtuais (Proxmox)',
+                'events': 'Eventos do Cluster'
+            };
+            document.getElementById('pageTitle').innerText = titles[viewName] || 'Visão Geral';
             
             // Mostra/Esconde seletor de namespace
             const nsSelectorContainer = document.getElementById('nsSelectorContainer');
-            if(['dashboard', 'nodes', 'namespaces'].includes(viewName)) {
+            if(['dashboard', 'nodes', 'namespaces', 'vms'].includes(viewName)) {
                 nsSelectorContainer.classList.add('hidden');
             } else {
                 nsSelectorContainer.classList.remove('hidden');
@@ -170,6 +271,8 @@
                 </div>`;
             
             if(viewName === 'dashboard') loadDashboardData();
+            else if(viewName === 'vms') loadVmData();
+            else if(viewName === 'events') loadEventsData();
             else loadListData(viewName);
         }
 
@@ -200,38 +303,140 @@
                         </div>
                     </div>
 
-                    <!-- RECURSOS DO CLUSTER -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 fade-in">
-                        <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg">
-                            <div class="flex justify-between items-end mb-4">
-                                <div>
-                                    <h4 class="text-white font-semibold text-lg">Alocação de CPU</h4>
-                                    <p class="text-slate-500 text-xs uppercase font-bold tracking-wider">Total: ${data.totalCpu}</p>
+                    <!-- RECURSOS DO CLUSTER COM GRÁFICOS -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 fade-in">
+                        <div class="bg-card rounded-xl border border-slate-700 p-8 shadow-2xl relative overflow-hidden">
+                            <div class="absolute top-0 right-0 p-4">
+                                ${data.hasRealMetrics ? '<span class="text-[10px] bg-green-500/20 text-green-400 px-3 py-1 rounded-full font-bold border border-green-500/30">REAL-TIME</span>' : '<span class="text-[10px] bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full font-bold border border-amber-500/30">ALOCADO</span>'}
+                            </div>
+                            <h4 class="text-white font-bold text-xl mb-1">Distribuição de CPU</h4>
+                            <p class="text-slate-500 text-xs mb-6 uppercase tracking-widest font-bold">Capacidade: ${data.totalCpu}</p>
+                            
+                            <div class="flex items-center justify-around">
+                                <div class="w-48 h-48">
+                                    <canvas id="cpuChart"></canvas>
                                 </div>
-                                <span class="text-blue-400 font-bold text-2xl">${data.cpuUsage}%</span>
+                                <div class="space-y-4">
+                                    <div class="flex items-center">
+                                        <div class="w-3 h-3 bg-blue-500 rounded-full mr-3"></div>
+                                        <div><p class="text-xs text-slate-400 uppercase font-bold">Em Uso</p><p class="text-white font-bold">${data.cpuUsage}%</p></div>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <div class="w-3 h-3 bg-slate-700 rounded-full mr-3"></div>
+                                        <div><p class="text-xs text-slate-400 uppercase font-bold">Livre</p><p class="text-white font-bold">${(100 - data.cpuUsage).toFixed(1)}%</p></div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="w-full bg-slate-800 rounded-full h-3 border border-slate-700 overflow-hidden">
-                                <div class="bg-blue-500 h-full rounded-full transition-all duration-1000" style="width: ${data.cpuUsage}%"></div>
-                            </div>
-                            <p class="mt-4 text-slate-400 text-xs">Percentagem de CPU reservada para o sistema e pods.</p>
                         </div>
 
-                        <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg">
-                            <div class="flex justify-between items-end mb-4">
-                                <div>
-                                    <h4 class="text-white font-semibold text-lg">Alocação de Memória</h4>
-                                    <p class="text-slate-500 text-xs uppercase font-bold tracking-wider">Total: ${data.totalMem}</p>
+                        <div class="bg-card rounded-xl border border-slate-700 p-8 shadow-2xl relative overflow-hidden">
+                            <div class="absolute top-0 right-0 p-4">
+                                ${data.hasRealMetrics ? '<span class="text-[10px] bg-green-500/20 text-green-400 px-3 py-1 rounded-full font-bold border border-green-500/30">REAL-TIME</span>' : '<span class="text-[10px] bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full font-bold border border-amber-500/30">ALOCADO</span>'}
+                            </div>
+                            <h4 class="text-white font-bold text-xl mb-1">Distribuição de Memória</h4>
+                            <p class="text-slate-500 text-xs mb-6 uppercase tracking-widest font-bold">Capacidade: ${data.totalMem}</p>
+                            
+                            <div class="flex items-center justify-around">
+                                <div class="w-48 h-48">
+                                    <canvas id="memChart"></canvas>
                                 </div>
-                                <span class="text-emerald-400 font-bold text-2xl">${data.memUsage}%</span>
+                                <div class="space-y-4">
+                                    <div class="flex items-center">
+                                        <div class="w-3 h-3 bg-emerald-500 rounded-full mr-3"></div>
+                                        <div><p class="text-xs text-slate-400 uppercase font-bold">Em Uso</p><p class="text-white font-bold">${data.memUsage}%</p></div>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <div class="w-3 h-3 bg-slate-700 rounded-full mr-3"></div>
+                                        <div><p class="text-xs text-slate-400 uppercase font-bold">Livre</p><p class="text-white font-bold">${(100 - data.memUsage).toFixed(1)}%</p></div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="w-full bg-slate-800 rounded-full h-3 border border-slate-700 overflow-hidden">
-                                <div class="bg-emerald-500 h-full rounded-full transition-all duration-1000" style="width: ${data.memUsage}%"></div>
-                            </div>
-                            <p class="mt-4 text-slate-400 text-xs">Percentagem de Memória RAM reservada para o sistema e pods.</p>
                         </div>
                     </div>
                 `;
+
+                // Renderizar os Gráficos
+                setTimeout(() => {
+                    renderDashboardCharts(data.cpuUsage, data.memUsage);
+                }, 100);
+
             } catch (err) { showToast("Falha ao comunicar com API", "error"); }
+        }
+
+        function renderDashboardCharts(cpuUsage, memUsage) {
+            const chartConfig = (label, value, color) => ({
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [value, 100 - value],
+                        backgroundColor: [color, '#334155'],
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    cutout: '80%',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+                }
+            });
+
+            if (cpuChart) cpuChart.destroy();
+            if (memChart) memChart.destroy();
+
+            cpuChart = new Chart(document.getElementById('cpuChart'), chartConfig('CPU', cpuUsage, '#3b82f6'));
+            memChart = new Chart(document.getElementById('memChart'), chartConfig('Memória', memUsage, '#10b981'));
+        }
+
+        async function loadEventsData() {
+            try {
+                const res = await fetch(`${apiBase}/events?ns=${selectedNamespace}`);
+                const data = await res.json();
+                
+                if(data.length === 0) {
+                    document.getElementById('mainContent').innerHTML = `
+                        <div class="bg-card border border-slate-700 rounded-lg p-10 text-center fade-in">
+                            <i class="fas fa-bell-slash text-slate-600 text-5xl mb-4"></i>
+                            <h3 class="text-xl text-white font-medium mb-2">Sem Eventos</h3>
+                            <p class="text-slate-400">Não existem eventos recentes no namespace <span class="text-blue-400">${selectedNamespace}</span>.</p>
+                        </div>`;
+                    return;
+                }
+
+                let html = `
+                <div class="fade-in">
+                    <div class="bg-card rounded-lg border border-slate-700 overflow-hidden shadow-xl">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-slate-300">
+                                <thead class="bg-slate-800 text-slate-400 text-xs uppercase font-semibold border-b border-slate-700">
+                                    <tr>
+                                        <th class="px-6 py-4">Tipo</th>
+                                        <th class="px-6 py-4">Razão</th>
+                                        <th class="px-6 py-4">Mensagem</th>
+                                        <th class="px-6 py-4">Fonte</th>
+                                        <th class="px-6 py-4">Última Vez</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-700/50">
+                `;
+
+                data.forEach(e => {
+                    const typeColor = e.type === 'Warning' ? 'text-amber-400 bg-amber-400/10' : 'text-blue-400 bg-blue-400/10';
+                    html += `
+                        <tr class="hover:bg-slate-700/30 transition">
+                            <td class="px-6 py-4"><span class="${typeColor} px-2 py-1 rounded text-[10px] font-bold uppercase">${e.type}</span></td>
+                            <td class="px-6 py-4 font-bold text-white">${e.reason}</td>
+                            <td class="px-6 py-4 text-slate-400 text-xs max-w-md">${e.message}</td>
+                            <td class="px-6 py-4 text-slate-500 font-mono text-[10px]">${e.source}</td>
+                            <td class="px-6 py-4 text-slate-400 text-xs">${new Date(e.lastSeen).toLocaleString()}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `</tbody></table></div></div></div>`;
+                document.getElementById('mainContent').innerHTML = html;
+            } catch (err) { showToast("Falha ao carregar eventos", "error"); }
         }
 
         async function loadListData(resource) {
@@ -245,7 +450,7 @@
                 const data = await res.json();
                 
                 let createActionHTML = '';
-                if(resource !== 'nodes') {
+                if(resource !== 'nodes' && resource !== 'events') {
                     createActionHTML = `
                         <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6 flex flex-wrap gap-4 items-end fade-in">
                             <div class="flex-1 min-w-[200px]">
@@ -257,6 +462,34 @@
                             <div class="flex-1 min-w-[200px]">
                                 <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Imagem Docker</label>
                                 <input type="text" id="createNewImage" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="Ex: nginx" value="nginx">
+                            </div>` : ''}
+
+                            ${resource === 'deployments' ? `
+                            <div class="w-24">
+                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">CPU Limit</label>
+                                <input type="text" id="createCpuLimit" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="500m">
+                            </div>
+                            <div class="w-24">
+                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Mem Limit</label>
+                                <input type="text" id="createMemLimit" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="256Mi">
+                            </div>` : ''}
+
+                            ${resource === 'services' ? `
+                            <div class="w-32">
+                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Tipo</label>
+                                <select id="createServiceType" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:outline-none">
+                                    <option value="ClusterIP">ClusterIP</option>
+                                    <option value="NodePort">NodePort</option>
+                                    <option value="LoadBalancer">LoadBalancer</option>
+                                </select>
+                            </div>
+                            <div class="w-24">
+                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Porta</label>
+                                <input type="number" id="createServicePort" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" value="80">
+                            </div>
+                            <div class="w-24">
+                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">T. Port</label>
+                                <input type="number" id="createServiceTargetPort" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" value="80">
                             </div>` : ''}
 
                             ${resource === 'ingresses' ? `
@@ -322,9 +555,32 @@
                                 let val = item[key] ?? '-';
                                 if(key === 'status') return `<td class="px-6 py-4"><span class="${statusColor}">${val}</span></td>`;
                                 if(Array.isArray(val)) return `<td class="px-6 py-4 text-slate-400">${val.join(', ') || '-'}</td>`;
+                                
+                                // Caso especial para Replicas em Deployments (Adicionar botões de Scale)
+                                if(resource === 'deployments' && key === 'replicas') {
+                                    return `
+                                    <td class="px-6 py-4">
+                                        <div class="flex items-center space-x-2">
+                                            <button onclick="scaleDeployment('${item.name}', ${val - 1})" class="text-slate-400 hover:text-white"><i class="fas fa-minus-circle"></i></button>
+                                            <span class="text-white font-bold w-4 text-center">${val}</span>
+                                            <button onclick="scaleDeployment('${item.name}', ${val + 1})" class="text-slate-400 hover:text-white"><i class="fas fa-plus-circle"></i></button>
+                                        </div>
+                                    </td>`;
+                                }
+
                                 return `<td class="px-6 py-4 text-slate-400">${val}</td>`;
                             }).join('')}
-                            <td class="px-6 py-4 text-right">
+                            <td class="px-6 py-4 text-right space-x-2">
+                                ${resource === 'pods' ? `
+                                <button onclick="viewLogs('${item.name}')" class="text-blue-400 hover:text-blue-300 bg-blue-400/10 hover:bg-blue-400/20 p-2 rounded transition" title="Ver Logs">
+                                    <i class="fas fa-terminal"></i>
+                                </button>` : ''}
+
+                                ${resource !== 'nodes' && resource !== 'events' ? `
+                                <button onclick="openYamlModal('${resource}','${item.name}')" class="text-indigo-400 hover:text-indigo-300 bg-indigo-400/10 hover:bg-indigo-400/20 p-2 rounded transition" title="Editar YAML">
+                                    <i class="fas fa-file-code"></i>
+                                </button>` : ''}
+
                                 ${resource === 'nodes' ? 
                                 `<span class="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded border border-slate-700">Sistema</span>` :
                                 `<button onclick="deleteResource('${resource}','${item.name}')" class="text-red-400 hover:text-red-300 bg-red-400/10 hover:bg-red-400/20 p-2 rounded transition" title="Apagar">
@@ -340,6 +596,237 @@
             } catch (err) { showToast("Falha ao comunicar com orquestrador", "error"); }
         }
 
+        // --- FUNÇÕES YAML EDITOR ---
+        async function openYamlModal(resource, name) {
+            currentYamlTarget = { resource, name, ns: selectedNamespace };
+            document.getElementById('yamlModal').classList.remove('hidden');
+            document.getElementById('yamlModalTitle').innerText = `${resource}/${name}`;
+            
+            initYamlEditor();
+            yamlEditor.setValue("A carregar YAML...");
+            yamlEditor.setReadOnly(true);
+
+            try {
+                const res = await fetch(`${apiBase}/yaml/${resource}/${name}?ns=${selectedNamespace}`);
+                const data = await res.json();
+                yamlEditor.setValue(data.yaml, -1);
+                yamlEditor.setReadOnly(false);
+            } catch (err) {
+                yamlEditor.setValue("Erro ao carregar ficheiro YAML.");
+            }
+        }
+
+        function closeYamlModal() {
+            document.getElementById('yamlModal').classList.add('hidden');
+        }
+
+        async function saveYaml() {
+            const yaml = yamlEditor.getValue();
+            const { resource, name, ns } = currentYamlTarget;
+
+            showToast("A aplicar alterações YAML...", "info");
+
+            try {
+                const res = await fetch(`${apiBase}/yaml/${resource}/${name}?ns=${ns}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ yaml })
+                });
+
+                if(res.ok) {
+                    showToast("YAML aplicado com sucesso!", "success");
+                    closeYamlModal();
+                    loadCurrentView();
+                } else {
+                    const err = await res.json();
+                    alert(`Falha ao aplicar YAML:\n${err.message}`);
+                }
+            } catch (err) { showToast("Erro de rede.", "error"); }
+        }
+
+        async function loadVmData() {
+            try {
+                const res = await fetch(`${apiBase}/vms`);
+                const vms = await res.json();
+                
+                // Buscar nós do K8s para o mapeamento visual
+                let k8sNodes = [];
+                try {
+                    const nodesRes = await fetch(`${apiBase}/nodes`);
+                    k8sNodes = await nodesRes.json();
+                } catch(e) { console.error("Não foi possível carregar nós para mapeamento."); }
+
+                if (vms.length === 0) {
+                    document.getElementById('mainContent').innerHTML = `
+                        <div class="bg-card border border-slate-700 rounded-lg p-10 text-center fade-in">
+                            <i class="fas fa-desktop text-slate-600 text-5xl mb-4"></i>
+                            <h3 class="text-xl text-white font-medium mb-2">Nenhuma VM Encontrada</h3>
+                            <p class="text-slate-400">Não foi possível encontrar máquinas virtuais no cluster Proxmox.</p>
+                        </div>`;
+                    return;
+                }
+
+                let html = `
+                <div class="fade-in">
+                    <div class="bg-card rounded-lg border border-slate-700 overflow-hidden shadow-xl">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-slate-300">
+                                <thead class="bg-slate-800 text-slate-400 text-xs uppercase font-semibold border-b border-slate-700">
+                                    <tr>
+                                        <th class="px-6 py-4">ID</th>
+                                        <th class="px-6 py-4">Nome</th>
+                                        <th class="px-6 py-4">Status</th>
+                                        <th class="px-6 py-4">Node</th>
+                                        <th class="px-6 py-4">CPU %</th>
+                                        <th class="px-6 py-4">Memória (GB)</th>
+                                        <th class="px-6 py-4 text-right">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-700/50">
+                `;
+
+                vms.forEach(vm => {
+                    const isCloning = cloningVmIds.has(vm.vmId);
+                    let statusColor = vm.status === 'running' ? "text-green-400 bg-green-400/10 px-2 py-1 rounded-full text-xs font-bold" : "text-red-400 bg-red-400/10 px-2 py-1 rounded-full text-xs font-bold";
+                    let statusText = vm.status;
+
+                    if (isCloning) {
+                        statusColor = "text-blue-400 bg-blue-400/10 px-2 py-1 rounded-full text-xs font-bold animate-pulse";
+                        statusText = "cloning...";
+                    }
+
+                    const memoryGB = (vm.memory / 1024 / 1024 / 1024).toFixed(2);
+                    const isK8sNode = k8sNodes.some(n => n.name.toLowerCase() === vm.name.toLowerCase());
+                    const k8sBadge = isK8sNode ? `<span class="ml-2 bg-blue-500/20 text-blue-400 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/30 font-bold"><i class="fas fa-dharmachakra mr-1"></i>K8S NODE</span>` : '';
+
+                    const btnDisabled = isCloning ? 'disabled opacity-30 cursor-not-allowed' : '';
+
+                    html += `
+                        <tr class="hover:bg-slate-700/30 transition ${isCloning ? 'bg-blue-500/5' : ''}">
+                            <td class="px-6 py-4 font-mono text-blue-400">${vm.vmId}</td>
+                            <td class="px-6 py-4 font-medium text-white flex items-center">
+                                ${vm.name} ${k8sBadge}
+                                ${isCloning ? '<i class="fas fa-spinner fa-spin ml-2 text-blue-400"></i>' : ''}
+                            </td>
+                            <td class="px-6 py-4"><span class="${statusColor}">${statusText}</span></td>
+                            <td class="px-6 py-4 text-slate-400">${vm.node}</td>
+                            <td class="px-6 py-4 text-slate-400">${(vm.cpu * 100).toFixed(1)}%</td>
+                            <td class="px-6 py-4 text-slate-400">${memoryGB} GB</td>
+                            <td class="px-6 py-4 text-right space-x-2">
+                                <button onclick="openCloneModal('${vm.node}', ${vm.vmId}, '${vm.name}')" class="text-blue-400 hover:text-blue-300 p-2 ${btnDisabled}" title="Clonar VM" ${btnDisabled}>
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                                <button onclick="vmAction('${vm.node}', ${vm.vmId}, 'start')" class="text-green-400 hover:text-green-300 p-2 ${btnDisabled}" title="Ligar" ${btnDisabled}>
+                                    <i class="fas fa-play"></i>
+                                </button>
+                                <button onclick="vmAction('${vm.node}', ${vm.vmId}, 'shutdown')" class="text-amber-400 hover:text-amber-300 p-2 ${btnDisabled}" title="Desligar" ${btnDisabled}>
+                                    <i class="fas fa-power-off"></i>
+                                </button>
+                                <button onclick="vmAction('${vm.node}', ${vm.vmId}, 'stop')" class="text-red-400 hover:text-red-300 p-2 ${btnDisabled}" title="Parar (Forçado)" ${btnDisabled}>
+                                    <i class="fas fa-stop"></i>
+                                </button>
+                                <button onclick="deleteVm('${vm.node}', ${vm.vmId}, '${vm.name}')" class="text-red-600 hover:text-red-500 p-2 ${btnDisabled}" title="Apagar VM" ${btnDisabled}>
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += `</tbody></table></div></div></div>`;
+                document.getElementById('mainContent').innerHTML = html;
+            } catch (err) { 
+                showToast("Falha ao carregar VMs do Proxmox", "error"); 
+            }
+        }
+
+        // --- FUNÇÕES DE CLONAGEM ---
+        function openCloneModal(node, vmid, name) {
+            currentCloneData = { node, vmid };
+            document.getElementById('cloneModal').classList.remove('hidden');
+            document.getElementById('cloneModalTitle').innerText = name;
+            document.getElementById('cloneNewId').value = vmid + 100; // Sugestão
+            document.getElementById('cloneNewName').value = name + "-clone";
+            document.getElementById('cloneTargetNode').value = node;
+            
+            document.getElementById('confirmCloneBtn').onclick = () => confirmClone();
+        }
+
+        function closeCloneModal() {
+            document.getElementById('cloneModal').classList.add('hidden');
+        }
+
+        async function confirmClone() {
+            const newId = parseInt(document.getElementById('cloneNewId').value);
+            const newName = document.getElementById('cloneNewName').value;
+            const targetNode = document.getElementById('cloneTargetNode').value;
+
+            if(!newId || !newName || !targetNode) return showToast("Preencha todos os campos", "error");
+
+            showToast("A iniciar clonagem... Isto pode demorar vários minutos.", "info");
+            
+            // Adiciona ao estado de clonagem e fecha modal
+            cloningVmIds.add(newId);
+            closeCloneModal();
+            loadVmData(); // Atualiza logo a tabela para mostrar o loading
+
+            try {
+                const res = await fetch(`${apiBase}/vms/${currentCloneData.node}/${currentCloneData.vmid}/clone`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ newId, name: newName, targetNode, full: true })
+                });
+
+                if(res.ok) {
+                    showToast("Clonagem concluída com sucesso no Proxmox!", "success");
+                } else {
+                    showToast("O Proxmox iniciou a tarefa, mas houve um aviso. Verifica o painel.", "error");
+                }
+            } catch (err) { 
+                showToast("Erro de rede ao comunicar com o Proxmox.", "error"); 
+            } finally {
+                // Remove o estado de loading após um tempo de segurança ou nova carga
+                setTimeout(() => {
+                    cloningVmIds.delete(newId);
+                    loadVmData();
+                }, 5000); 
+            }
+        }
+
+        async function vmAction(node, vmid, action) {
+            try {
+                const res = await fetch(`${apiBase}/vms/${node}/${vmid}/action`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: action })
+                });
+
+                if (res.ok) {
+                    showToast(`Ação ${action} enviada com sucesso para VM ${vmid}`, "success");
+                    setTimeout(loadVmData, 2000); // Esperar um pouco para a mudança de estado refletir
+                } else {
+                    showToast(`Falha ao executar ${action}`, "error");
+                }
+            } catch (err) { showToast("Erro de rede.", "error"); }
+        }
+
+        async function deleteVm(node, vmid, name) {
+            if(!confirm(`⚠️ ATENÇÃO: Vai apagar permanentemente a VM '${name}' (${vmid}) do Proxmox.\nEsta ação não pode ser desfeita. Deseja continuar?`)) return;
+
+            try {
+                const res = await fetch(`${apiBase}/vms/${node}/${vmid}`, {
+                    method: 'DELETE'
+                });
+
+                if (res.ok) {
+                    showToast(`VM ${name} apagada com sucesso!`, "success");
+                    loadVmData();
+                } else {
+                    showToast("Falha ao apagar VM. Verifique se está desligada.", "error");
+                }
+            } catch (err) { showToast("Erro de rede.", "error"); }
+        }
+
         async function createResource(resourceType) {
             let name = document.getElementById('createNewName').value;
             if(!name) return showToast("Por favor insira um nome", "error");
@@ -350,13 +837,18 @@
 
             if(resourceType === 'pods' || resourceType === 'deployments') {
                 payload.image = document.getElementById('createNewImage').value;
-                if(resourceType === 'deployments') payload.replicas = 1;
+                if(resourceType === 'deployments') {
+                    payload.replicas = 1;
+                    payload.cpuLimit = document.getElementById('createCpuLimit').value || null;
+                    payload.memLimit = document.getElementById('createMemLimit').value || null;
+                }
             }
 
             if(resourceType === 'services') {
                 payload.appLabel = name;
-                payload.port = 80;
-                payload.targetPort = 80;
+                payload.type = document.getElementById('createServiceType').value;
+                payload.port = parseInt(document.getElementById('createServicePort').value);
+                payload.targetPort = parseInt(document.getElementById('createServiceTargetPort').value);
             }
 
             if(resourceType === 'ingresses') {
@@ -398,6 +890,39 @@
                     setTimeout(loadCurrentView, 500);
                 } else { showToast(`Falha ao apagar.`, "error"); }
             } catch (err) { showToast("Erro de rede.", "error"); }
+        }
+
+        async function scaleDeployment(name, replicas) {
+            if(replicas < 0) return;
+            try {
+                const res = await fetch(`${apiBase}/deployments/scale`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ namespace: selectedNamespace, name: name, replicas: replicas })
+                });
+                if(res.ok) {
+                    showToast(`Escalando ${name} para ${replicas} réplicas...`, "success");
+                    setTimeout(loadCurrentView, 1000);
+                }
+            } catch (err) { showToast("Erro ao escalar.", "error"); }
+        }
+
+        async function viewLogs(podName) {
+            document.getElementById('logModal').classList.remove('hidden');
+            document.getElementById('logModalTitle').innerText = podName;
+            document.getElementById('logContent').innerHTML = "A carregar logs...";
+            
+            try {
+                const res = await fetch(`${apiBase}/pods/${podName}/logs?ns=${selectedNamespace}`);
+                const data = await res.json();
+                document.getElementById('logContent').innerText = data.logs;
+            } catch (err) {
+                document.getElementById('logContent').innerText = "Erro ao carregar logs.";
+            }
+        }
+
+        function closeLogModal() {
+            document.getElementById('logModal').classList.add('hidden');
         }
 
         function showToast(msg, type="info") {

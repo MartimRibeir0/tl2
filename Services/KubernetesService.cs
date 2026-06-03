@@ -103,8 +103,22 @@ public class KubernetesService
         });
     }
 
-    public async Task CreateDeploymentAsync(string ns, string name, string image, int replicas = 1)
+    public async Task CreateDeploymentAsync(string ns, string name, string image, int replicas = 1, Dictionary<string, string>? envVars = null, string? cpuLimit = null, string? memLimit = null)
     {
+        var container = new V1Container 
+        { 
+            Name = name, 
+            Image = image,
+            Env = envVars?.Select(e => new V1EnvVar { Name = e.Key, Value = e.Value }).ToList(),
+            Resources = new V1ResourceRequirements
+            {
+                Limits = new Dictionary<string, ResourceQuantity>()
+            }
+        };
+
+        if (!string.IsNullOrEmpty(cpuLimit)) container.Resources.Limits["cpu"] = new ResourceQuantity(cpuLimit);
+        if (!string.IsNullOrEmpty(memLimit)) container.Resources.Limits["memory"] = new ResourceQuantity(memLimit);
+
         var dep = new V1Deployment
         {
             Metadata = new V1ObjectMeta { Name = name, NamespaceProperty = ns },
@@ -123,10 +137,7 @@ public class KubernetesService
                     },
                     Spec = new V1PodSpec
                     {
-                        Containers = new List<V1Container>
-                        {
-                            new V1Container { Name = name, Image = image }
-                        }
+                        Containers = new List<V1Container> { container }
                     }
                 }
             }
@@ -152,17 +163,18 @@ public class KubernetesService
         });
     }
 
-    public async Task CreateServiceAsync(string ns, string name, string appLabel, int port, int targetPort)
+    public async Task CreateServiceAsync(string ns, string name, string appLabel, int port, int targetPort, string type = "ClusterIP", int? nodePort = null)
     {
         var svc = new V1Service
         {
             Metadata = new V1ObjectMeta { Name = name, NamespaceProperty = ns },
             Spec = new V1ServiceSpec
             {
+                Type = type,
                 Selector = new Dictionary<string, string> { { "app", appLabel } },
                 Ports = new List<V1ServicePort>
                 {
-                    new V1ServicePort { Port = port, TargetPort = targetPort }
+                    new V1ServicePort { Port = port, TargetPort = targetPort, NodePort = nodePort }
                 }
             }
         };
@@ -227,6 +239,114 @@ public class KubernetesService
     public async Task DeleteIngressAsync(string ns, string name)
         => await _client.NetworkingV1.DeleteNamespacedIngressAsync(name, ns);
 
+    // ── EVENTS ─────────────────────────────────────────────
+    public async Task<object> GetEventsAsync(string ns = "default")
+    {
+        var events = await _client.CoreV1.ListNamespacedEventAsync(ns);
+        return events.Items
+            .OrderByDescending(e => e.LastTimestamp ?? e.EventTime ?? DateTime.MinValue)
+            .Select(e => new
+            {
+                name = e.Metadata.Name,
+                type = e.Type,
+                reason = e.Reason,
+                message = e.Message,
+                source = e.Source?.Component,
+                count = e.Count,
+                lastSeen = e.LastTimestamp ?? e.FirstTimestamp
+            });
+    }
+
+    // ── METRICS ───────────────────────────────────────────
+    public async Task<object?> GetRealUsageAsync()
+    {
+        try 
+        {
+            var metrics = await _client.CustomObjects.GetClusterCustomObjectAsync("metrics.k8s.io", "v1beta1", "nodes", "");
+            var items = ((System.Text.Json.JsonElement)metrics).GetProperty("items");
+            
+            long usedCpu = 0;
+            long usedMem = 0;
+
+            foreach (var item in items.EnumerateArray())
+            {
+                var usage = item.GetProperty("usage");
+                usedCpu += ParseCpu(usage.GetProperty("cpu").GetString()!);
+                usedMem += ParseMemory(usage.GetProperty("memory").GetString()!);
+            }
+
+            return new { usedCpu, usedMem };
+        }
+        catch { return null; }
+    }
+
+    // ── SCALING ───────────────────────────────────────────
+    public async Task ScaleDeploymentAsync(string ns, string name, int replicas)
+    {
+        var patch = new V1Patch($"{{\"spec\": {{\"replicas\": {replicas}}}}}", V1Patch.PatchType.MergePatch);
+        await _client.AppsV1.PatchNamespacedDeploymentScaleAsync(patch, name, ns);
+    }
+
+    // ── LOGS ──────────────────────────────────────────────
+    public async Task<string> GetPodLogsAsync(string ns, string name)
+    {
+        try
+        {
+            var stream = await _client.CoreV1.ReadNamespacedPodLogAsync(name, ns);
+            using var reader = new StreamReader(stream);
+            return await reader.ReadToEndAsync();
+        }
+        catch
+        {
+            return "Erro ao recuperar logs ou o pod ainda não está pronto.";
+        }
+    }
+
+    // ── YAML EDITOR ───────────────────────────────────────
+    public async Task<string> GetYamlAsync(string resource, string ns, string name)
+    {
+        object? obj = resource.ToLower() switch
+        {
+            "pods" => await _client.CoreV1.ReadNamespacedPodAsync(name, ns),
+            "deployments" => await _client.AppsV1.ReadNamespacedDeploymentAsync(name, ns),
+            "services" => await _client.CoreV1.ReadNamespacedServiceAsync(name, ns),
+            "namespaces" => await _client.CoreV1.ReadNamespaceAsync(name),
+            "ingresses" => await _client.NetworkingV1.ReadNamespacedIngressAsync(name, ns),
+            _ => throw new Exception("Recurso não suportado para YAML")
+        };
+
+        var serializer = new YamlDotNet.Serialization.SerializerBuilder()
+            .WithNamingConvention(YamlDotNet.Serialization.NamingConventions.CamelCaseNamingConvention.Instance)
+            .Build();
+        return serializer.Serialize(obj);
+    }
+
+    public async Task UpdateYamlAsync(string resource, string ns, string name, string yaml)
+    {
+        var type = resource.ToLower() switch
+        {
+            "pods" => typeof(V1Pod),
+            "deployments" => typeof(V1Deployment),
+            "services" => typeof(V1Service),
+            "namespaces" => typeof(V1Namespace),
+            "ingresses" => typeof(V1Ingress),
+            _ => throw new Exception("Recurso não suportado para YAML")
+        };
+
+        var deserializer = new YamlDotNet.Serialization.DeserializerBuilder()
+            .WithNamingConvention(YamlDotNet.Serialization.NamingConventions.CamelCaseNamingConvention.Instance)
+            .IgnoreUnmatchedProperties()
+            .Build();
+            
+        var obj = deserializer.Deserialize(yaml, type);
+        
+        if (resource == "pods") await _client.CoreV1.ReplaceNamespacedPodAsync((V1Pod)obj, name, ns);
+        else if (resource == "deployments") await _client.AppsV1.ReplaceNamespacedDeploymentAsync((V1Deployment)obj, name, ns);
+        else if (resource == "services") await _client.CoreV1.ReplaceNamespacedServiceAsync((V1Service)obj, name, ns);
+        else if (resource == "namespaces") await _client.CoreV1.ReplaceNamespaceAsync((V1Namespace)obj, name);
+        else if (resource == "ingresses") await _client.NetworkingV1.ReplaceNamespacedIngressAsync((V1Ingress)obj, name, ns);
+    }
+
     // ── DASHBOARD / CLUSTER INFO ───────────────────────────
     public async Task<object> GetClusterInfoAsync()
     {
@@ -235,11 +355,8 @@ public class KubernetesService
         var namespaces = await _client.CoreV1.ListNamespaceAsync();
         var deployments = await _client.AppsV1.ListDeploymentForAllNamespacesAsync();
 
-        // Cálculo de Recursos (CPU e Memória)
         long totalCpuMillicores = 0;
-        long allocatableCpuMillicores = 0;
         long totalMemoryBytes = 0;
-        long allocatableMemoryBytes = 0;
 
         foreach (var node in nodes.Items)
         {
@@ -250,21 +367,60 @@ public class KubernetesService
                 if (node.Status.Capacity.TryGetValue("memory", out var memCap)) 
                     totalMemoryBytes += ParseMemory(memCap.ToString());
             }
-
-            if (node.Status.Allocatable != null)
-            {
-                if (node.Status.Allocatable.TryGetValue("cpu", out var cpuAlloc)) 
-                    allocatableCpuMillicores += ParseCpu(cpuAlloc.ToString());
-                if (node.Status.Allocatable.TryGetValue("memory", out var memAlloc)) 
-                    allocatableMemoryBytes += ParseMemory(memAlloc.ToString());
-            }
         }
 
-        // Estimativa simples de uso: Capacity - Allocatable (na verdade Allocatable é o que sobra, 
-        // mas em sistemas como Minikube, Capacity costuma ser o total do host e Allocatable o que o K8s pode usar)
-        // Para uma dashboard mais real, calculamos a % de alocação.
-        double cpuUsagePercent = totalCpuMillicores > 0 ? 100 - ((double)allocatableCpuMillicores / totalCpuMillicores * 100) : 0;
-        double memUsagePercent = totalMemoryBytes > 0 ? 100 - ((double)allocatableMemoryBytes / totalMemoryBytes * 100) : 0;
+        // Tentar obter uso real
+        var realUsage = await GetRealUsageAsync();
+        double cpuUsagePercent = 0;
+        double memUsagePercent = 0;
+
+        if (realUsage != null)
+        {
+            var used = (dynamic)realUsage;
+            cpuUsagePercent = totalCpuMillicores > 0 ? (double)used.usedCpu / totalCpuMillicores * 100 : 0;
+            memUsagePercent = totalMemoryBytes > 0 ? (double)used.usedMem / totalMemoryBytes * 100 : 0;
+        }
+        else
+        {
+            // Fallback: Calcular ALOCAÇÃO (Soma dos requests dos pods)
+            long allocatedCpu = 0;
+            long allocatedMem = 0;
+
+            foreach (var pod in pods.Items)
+            {
+                if (pod.Status.Phase == "Running" || pod.Status.Phase == "Pending")
+                {
+                    foreach (var container in pod.Spec.Containers)
+                    {
+                        if (container.Resources?.Requests != null)
+                        {
+                            if (container.Resources.Requests.TryGetValue("cpu", out var cpuReq))
+                                allocatedCpu += ParseCpu(cpuReq.ToString());
+                            if (container.Resources.Requests.TryGetValue("memory", out var memReq))
+                                allocatedMem += ParseMemory(memReq.ToString());
+                        }
+                    }
+                }
+            }
+
+            cpuUsagePercent = totalCpuMillicores > 0 ? (double)allocatedCpu / totalCpuMillicores * 100 : 0;
+            memUsagePercent = totalMemoryBytes > 0 ? (double)allocatedMem / totalMemoryBytes * 100 : 0;
+            
+            // Se ainda for 0, mas existirem nós, podemos usar a diferença entre Capacity e Allocatable
+            // como uma estimativa do que o sistema está a reservar para si mesmo.
+            if (cpuUsagePercent == 0 && totalCpuMillicores > 0)
+            {
+                long systemReservedCpu = 0;
+                foreach(var node in nodes.Items) {
+                    if (node.Status.Capacity != null && node.Status.Allocatable != null) {
+                        node.Status.Capacity.TryGetValue("cpu", out var cap);
+                        node.Status.Allocatable.TryGetValue("cpu", out var alloc);
+                        systemReservedCpu += (ParseCpu(cap.ToString()) - ParseCpu(alloc.ToString()));
+                    }
+                }
+                cpuUsagePercent = (double)systemReservedCpu / totalCpuMillicores * 100;
+            }
+        }
 
         return new
         {
@@ -278,7 +434,8 @@ public class KubernetesService
             cpuUsage = Math.Round(cpuUsagePercent, 1),
             memUsage = Math.Round(memUsagePercent, 1),
             totalCpu = $"{totalCpuMillicores / 1000.0} Cores",
-            totalMem = $"{Math.Round(totalMemoryBytes / 1024.0 / 1024.0 / 1024.0, 1)} GB"
+            totalMem = $"{Math.Round(totalMemoryBytes / 1024.0 / 1024.0 / 1024.0, 1)} GB",
+            hasRealMetrics = realUsage != null
         };
     }
 

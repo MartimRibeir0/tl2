@@ -28,4 +28,8 @@ public class PodsController : ControllerBase
         await _svc.DeletePodAsync(ns, name);
         return Ok();
     }
+
+    [HttpGet("{name}/logs")]
+    public async Task<IActionResult> GetLogs(string name, [FromQuery] string ns = "default")
+        => Ok(new { logs = await _svc.GetPodLogsAsync(ns, name) });
 }

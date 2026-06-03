@@ -16,16 +16,24 @@ public class DeploymentsController : ControllerBase
         => Ok(await _svc.GetDeploymentsAsync(ns));
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] CreateDeploymentDto dto)
+    public async Task<IActionResult> Create(CreateDeploymentDto dto)
     {
-        await _svc.CreateDeploymentAsync(dto.Namespace, dto.Name, dto.Image, dto.Replicas);
+        await _svc.CreateDeploymentAsync(dto.Namespace, dto.Name, dto.Image, dto.Replicas, dto.EnvVars, dto.CpuLimit, dto.MemLimit);
         return Ok();
     }
+
 
     [HttpDelete("{name}")]
     public async Task<IActionResult> Delete(string name, [FromQuery] string ns = "default")
     {
         await _svc.DeleteDeploymentAsync(ns, name);
+        return Ok();
+    }
+
+    [HttpPatch("scale")]
+    public async Task<IActionResult> Scale([FromBody] ScaleDeploymentDto dto)
+    {
+        await _svc.ScaleDeploymentAsync(dto.Namespace, dto.Name, dto.Replicas);
         return Ok();
     }
 }
