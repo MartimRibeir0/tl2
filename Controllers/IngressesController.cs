@@ -12,20 +12,34 @@ public class IngressesController : ControllerBase
     public IngressesController(KubernetesService svc) => _svc = svc;
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromQuery] string ns = "default")
+    public async Task<IActionResult> Get([FromQuery] string? ns = null)
         => Ok(await _svc.GetIngressesAsync(ns));
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateIngressDto dto)
     {
-        await _svc.CreateIngressAsync(dto.Namespace, dto.Name, dto.Host, dto.ServiceName, dto.Port);
-        return Ok();
+        try
+        {
+            await _svc.CreateIngressAsync(dto.Namespace, dto.Name, dto.Host, dto.ServiceName, dto.Port, dto.Path, dto.PathType, dto.TlsSecret);
+            return Ok(new { message = "Ingress criado com sucesso" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = $"Falha ao criar ingress: {ex.Message}" });
+        }
     }
 
     [HttpDelete("{name}")]
     public async Task<IActionResult> Delete(string name, [FromQuery] string ns = "default")
     {
-        await _svc.DeleteIngressAsync(ns, name);
-        return Ok();
+        try
+        {
+            await _svc.DeleteIngressAsync(ns, name);
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = $"Falha ao apagar ingress: {ex.Message}" });
+        }
     }
 }

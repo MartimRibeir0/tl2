@@ -9,17 +9,21 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // ----- CONFIGURAÇÃO DO KUBERNETES -----
-// Vai procurar a configuração automaticamente no ~/.kube/config (gerada pelo MicroK8s)
-var kubeConfig = KubernetesClientConfiguration.BuildDefaultConfig();
-builder.Services.AddSingleton<IKubernetes>(new Kubernetes(kubeConfig));
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<KubernetesService>();
-// --------------------------------------
+builder.Services.AddScoped<ProxmoxService>();
 
 // ----- CONFIGURAÇÃO DO PROXMOX -----
+builder.Services.AddHttpClient<AuthService>()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    {
+        ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+    });
+
 builder.Services.AddHttpClient<ProxmoxService>()
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
     {
-        // Ignorar erros de SSL para ambientes de teste (Proxmox usa self-signed por padrão)
         ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
     });
 // -----------------------------------

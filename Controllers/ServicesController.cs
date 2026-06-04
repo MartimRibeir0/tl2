@@ -12,21 +12,35 @@ public class ServicesController : ControllerBase
     public ServicesController(KubernetesService svc) => _svc = svc;
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromQuery] string ns = "default")
+    public async Task<IActionResult> Get([FromQuery] string? ns = null)
         => Ok(await _svc.GetServicesAsync(ns));
 
     [HttpPost]
     public async Task<IActionResult> Create(CreateServiceDto dto)
     {
-        await _svc.CreateServiceAsync(dto.Namespace, dto.Name, dto.AppLabel, dto.Port, dto.TargetPort, dto.Type, dto.NodePort);
-        return Ok();
+        try
+        {
+            await _svc.CreateServiceAsync(dto.Namespace, dto.Name, dto.AppLabel, dto.Ports, dto.Type);
+            return Ok(new { message = "Serviço criado com sucesso" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = $"Falha ao criar serviço: {ex.Message}" });
+        }
     }
 
 
     [HttpDelete("{name}")]
     public async Task<IActionResult> Delete(string name, [FromQuery] string ns = "default")
     {
-        await _svc.DeleteServiceAsync(ns, name);
-        return Ok();
+        try
+        {
+            await _svc.DeleteServiceAsync(ns, name);
+            return Ok();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = $"Falha ao apagar serviço: {ex.Message}" });
+        }
     }
 }

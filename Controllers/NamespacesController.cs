@@ -18,8 +18,15 @@ public class NamespacesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateNamespaceDto dto)
     {
-        await _svc.CreateNamespaceAsync(dto.Name);
-        return Ok();
+        try 
+        {
+            await _svc.CreateNamespaceAsync(dto.Name);
+            return Ok(new { message = "Namespace criado com sucesso" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = $"Falha ao criar namespace: {ex.Message}" });
+        }
     }
 
     [HttpDelete("{name}")]

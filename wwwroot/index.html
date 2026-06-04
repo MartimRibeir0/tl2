@@ -4,21 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KubeManager | Enterprise Orchestrator</title>
-    <!-- Tailwind CSS (Uma framework moderna usada em produção) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <!-- Bibliotecas para UX Premium -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.15.2/ace.js"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    colors: {
-                        k8s: '#326CE5', // A cor oficial do Kubernetes
-                        darkbase: '#111827',
-                        card: '#1F2937',
-                    }
+                    colors: { k8s: '#326CE5', darkbase: '#111827', card: '#1F2937' }
                 }
             }
         }
@@ -26,916 +20,438 @@
     <style>
         body { background-color: #0f172a; color: #f3f4f6; }
         .sidebar { background-color: #1e293b; border-right: 1px solid #334155; }
-        .nav-item { transition: all 0.2s; border-left: 3px solid transparent; }
-        .nav-item:hover, .nav-item.active { background-color: #326CE520; color: #60a5fa; border-left-color: #326ce5; }
-        .fade-in { animation: fadeIn 0.4s; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        /* Scrollbar customizada */
-        ::-webkit-scrollbar { width: 8px; }
+        .nav-item { transition: all 0.2s; border-left: 4px solid transparent; cursor: pointer; }
+        .nav-item:hover { background-color: #326CE510; color: #60a5fa; }
+        .nav-item.active { background-color: #326CE520; color: #60a5fa; border-left-color: #326ce5; }
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        .slide-up { animation: slideUp 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #1e293b; }
-        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .card-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .card-hover:hover { transform: translateY(-4px); border-color: rgba(50, 108, 229, 0.4); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1); }
+        select option { background-color: #1e293b; color: #f3f4f6; }
+        select:focus { border-color: #3b82f6; outline: none; }
     </style>
 </head>
-<body class="flex h-screen overflow-hidden text-sm font-sans">
+<body class="flex h-screen overflow-hidden text-sm font-sans selection:bg-blue-500/30">
 
     <!-- SIDEBAR -->
-    <aside class="sidebar w-64 flex-shrink-0 hidden md:flex flex-col">
-        <div class="h-16 flex items-center px-6 border-b border-slate-700">
-            <svg class="w-8 h-8 text-blue-500 mr-3" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-            </svg>
-            <span class="text-xl font-bold tracking-wider text-white">Kube<span class="text-blue-500">Manager</span></span>
+    <aside class="sidebar w-72 flex-shrink-0 flex flex-col z-20 shadow-2xl">
+        <div class="h-20 flex items-center px-8 border-b border-slate-700/50">
+            <div class="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center mr-3 shadow-lg shadow-blue-900/40">
+                <i class="fas fa-dharmachakra text-xl text-white animate-[spin_10s_linear_infinite]"></i>
+            </div>
+            <span class="text-xl font-bold tracking-tight text-white">Kube<span class="text-blue-500">Manager</span></span>
         </div>
         
-        <div class="p-4 uppercase text-xs font-semibold text-slate-500 tracking-wider">Gestão do Cluster</div>
+        <div class="p-6 uppercase text-[10px] font-bold text-slate-500 tracking-[0.2em]">Gestão do Cluster</div>
         
-        <nav class="flex-1 overflow-y-auto w-full">
-            <a href="#" onclick="loadView('dashboard', this)" class="nav-item active flex items-center px-6 py-3 text-slate-300">
-                <i class="fas fa-chart-pie w-6"></i> Visão Geral
+        <nav class="flex-1 overflow-y-auto w-full px-3">
+            <a onclick="loadView('dashboard', this)" class="nav-item active flex items-center px-6 py-3.5 mb-1 rounded-xl text-slate-300">
+                <i class="fas fa-th-large w-6 opacity-50"></i> <span class="font-medium">Visão Geral</span>
             </a>
-            <a href="#" onclick="loadView('nodes', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
-                <i class="fas fa-server w-6"></i> Nodes
+            <a onclick="loadView('nodes', this)" class="nav-item flex items-center px-6 py-3.5 mb-1 rounded-xl text-slate-300">
+                <i class="fas fa-server w-6 opacity-50"></i> <span class="font-medium">Nodes</span>
             </a>
-            <a href="#" onclick="loadView('namespaces', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
-                <i class="fas fa-folder-open w-6"></i> Namespaces
+            <a onclick="loadView('namespaces', this)" class="nav-item flex items-center px-6 py-3.5 mb-1 rounded-xl text-slate-300">
+                <i class="fas fa-folder-open w-6 opacity-50"></i> <span class="font-medium">Namespaces</span>
             </a>
-            <a href="#" onclick="loadView('pods', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
-                <i class="fas fa-cubes w-6"></i> Pods
+            <a onclick="loadView('pods', this)" class="nav-item flex items-center px-6 py-3.5 mb-1 rounded-xl text-slate-300">
+                <i class="fas fa-cubes w-6 opacity-50"></i> <span class="font-medium">Pods</span>
             </a>
-            <a href="#" onclick="loadView('deployments', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
-                <i class="fas fa-layer-group w-6"></i> Deployments
+            <a onclick="loadView('deployments', this)" class="nav-item flex items-center px-6 py-3.5 mb-1 rounded-xl text-slate-300">
+                <i class="fas fa-layer-group w-6 opacity-50"></i> <span class="font-medium">Deployments</span>
             </a>
-            <a href="#" onclick="loadView('services', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
-                <i class="fas fa-network-wired w-6"></i> Services
+            <a onclick="loadView('services', this)" class="nav-item flex items-center px-6 py-3.5 mb-1 rounded-xl text-slate-300">
+                <i class="fas fa-network-wired w-6 opacity-50"></i> <span class="font-medium">Services</span>
             </a>
-            <a href="#" onclick="loadView('ingresses', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
-                <i class="fas fa-route w-6"></i> Ingresses
+            <a onclick="loadView('ingresses', this)" class="nav-item flex items-center px-6 py-3.5 mb-1 rounded-xl text-slate-300">
+                <i class="fas fa-route w-6 opacity-50"></i> <span class="font-medium">Ingress</span>
             </a>
-            <a href="#" onclick="loadView('events', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
-                <i class="fas fa-bell w-6"></i> Eventos
+            <a onclick="loadView('events', this)" class="nav-item flex items-center px-6 py-3.5 mb-1 rounded-xl text-slate-300">
+                <i class="fas fa-bell w-6 opacity-50"></i> <span class="font-medium">Eventos</span>
             </a>
 
-            <div class="p-4 uppercase text-xs font-semibold text-slate-500 tracking-wider border-t border-slate-700 mt-4">Infraestrutura</div>
-            <a href="#" onclick="loadView('vms', this)" class="nav-item flex items-center px-6 py-3 text-slate-300">
-                <i class="fas fa-desktop w-6"></i> Máquinas Virtuais
+            <div class="p-6 uppercase text-[10px] font-bold text-slate-500 tracking-[0.2em] border-t border-slate-700/50 mt-4">Infraestrutura</div>
+            
+            <div class="flex items-center group">
+                <a onclick="loadView('vms', this)" class="nav-item flex-1 flex items-center px-6 py-3.5 mb-1 rounded-xl text-slate-300">
+                    <i class="fas fa-desktop w-6 opacity-50"></i> <span class="font-medium">Gerir VMs Proxmox</span>
+                </a>
+                <button id="vmLogoutBtn" onclick="logoutProxmox()" class="hidden px-4 py-3.5 text-slate-500 hover:text-red-400 transition" title="Logout Proxmox">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+            
+            <a onclick="loadView('clusters', this)" class="nav-item flex items-center px-6 py-3.5 mb-1 rounded-xl text-slate-300">
+                <i class="fas fa-project-diagram w-6 opacity-50"></i> <span class="font-medium">Gerir Clusters</span>
             </a>
         </nav>
         
-        <div class="p-4 border-t border-slate-700 text-xs text-slate-500 text-center">
-            TL2 LTI - 25/26
+        <div class="p-6 border-t border-slate-700 text-[10px] text-slate-500 font-bold uppercase tracking-widest text-center">
+            TL2 LTI 25/26 | v2.6 Optimized
         </div>
     </aside>
 
-    <!-- ÁREA PRINCIPAL -->
-    <main class="flex-1 flex flex-col overflow-hidden relative">
-        <!-- HEADER SUPERIOR -->
-        <header class="h-16 flex items-center justify-between px-8 bg-slate-800 border-b border-slate-700 z-10 shadow-md">
-            <h1 id="pageTitle" class="text-2xl font-semibold text-white tracking-wide">Visão Geral</h1>
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 flex flex-col overflow-hidden relative bg-slate-900">
+        <header class="h-20 flex items-center justify-between px-10 bg-slate-800/40 border-b border-slate-700/50 backdrop-blur-xl z-10">
+            <div class="flex items-center">
+                <h1 id="pageTitle" class="text-2xl font-bold text-white tracking-tight mr-4">Visão Geral</h1>
+                <div id="loadingIndicator" class="hidden"><i class="fas fa-circle-notch fa-spin text-blue-500/50"></i></div>
+            </div>
             <div class="flex items-center space-x-4">
-                
-                <!-- SELETOR DE NAMESPACE -->
-                <div id="nsSelectorContainer" class="flex items-center bg-slate-700 rounded-lg px-3 py-1.5 border border-slate-600 hidden">
-                    <i class="fas fa-filter text-slate-400 mr-2 text-xs"></i>
-                    <select id="globalNamespaceSelector" onchange="changeNamespace(this.value)" class="bg-transparent text-white text-xs focus:outline-none cursor-pointer">
-                        <option value="default" class="bg-slate-800">default</option>
+                <div id="nsSelectorContainer" class="flex items-center bg-slate-700/30 rounded-xl px-4 py-2 border border-slate-600/30 hidden hover:bg-slate-700/50 transition">
+                    <i class="fas fa-filter text-slate-500 mr-3 text-xs"></i>
+                    <select id="globalNamespaceSelector" onchange="changeNamespace(this.value)" class="bg-transparent text-white text-xs font-bold focus:outline-none cursor-pointer">
                     </select>
                 </div>
-
-                <div class="flex items-center bg-slate-900 rounded-full px-3 py-1 border border-slate-700">
-                    <span class="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span>
-                    <span class="text-slate-300 text-xs">Sistema Operacional</span>
+                <div class="flex items-center bg-slate-950/50 rounded-full px-4 py-2 border border-slate-700/50 shadow-inner">
+                    <span id="headerClusterBadge" class="w-2 h-2 rounded-full bg-slate-500 mr-3"></span>
+                    <span id="headerClusterText" class="text-slate-300 text-[10px] font-bold uppercase tracking-widest">Nenhum Cluster</span>
                 </div>
-                <button onclick="loadCurrentView()" class="p-2 text-slate-400 hover:text-white rounded transition bg-slate-700 hover:bg-slate-600">
-                    <i class="fas fa-sync-alt"></i>
+                <button onclick="refreshCurrentView()" class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-white rounded-xl transition bg-slate-700/30 hover:bg-slate-600/50 border border-slate-600/30 group">
+                    <i class="fas fa-sync-alt text-sm group-active:rotate-180 transition-transform duration-500"></i>
                 </button>
             </div>
         </header>
 
-        <!-- CAIXA DE CONTEÚDO -->
-        <div class="flex-1 overflow-y-auto p-8 bg-slate-900 fade-in" id="mainContent">
-            <!-- Spinner -->
-            <div class="flex justify-center items-center h-full">
-                <i class="fas fa-circle-notch fa-spin text-blue-500 text-4xl"></i>
-            </div>
+        <div class="flex-1 overflow-y-auto p-10" id="mainContent">
         </div>
-
-        <!-- MENSAGENS FLUTUANTES (TOASTS) -->
-        <div id="toastArea" class="fixed bottom-4 right-4 z-50 flex flex-col space-y-2"></div>
-
-        <!-- MODAL DE LOGS -->
-        <div id="logModal" class="fixed inset-0 bg-black/80 z-[100] hidden flex items-center justify-center p-4">
-            <div class="bg-slate-800 w-full max-w-4xl h-[80vh] rounded-lg border border-slate-700 flex flex-col shadow-2xl">
-                <div class="p-4 border-b border-slate-700 flex justify-between items-center">
-                    <h3 class="text-white font-bold"><i class="fas fa-terminal mr-2"></i> Logs do Pod: <span id="logModalTitle"></span></h3>
-                    <button onclick="closeLogModal()" class="text-slate-400 hover:text-white"><i class="fas fa-times"></i></button>
-                </div>
-                <div id="logContent" class="flex-1 p-4 font-mono text-xs overflow-y-auto bg-black text-green-400 whitespace-pre-wrap"></div>
-                <div class="p-4 border-t border-slate-700 text-right">
-                    <button onclick="closeLogModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded">Fechar</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- MODAL DO EDITOR YAML -->
-        <div id="yamlModal" class="fixed inset-0 bg-black/80 z-[100] hidden flex items-center justify-center p-4">
-            <div class="bg-slate-800 w-full max-w-5xl h-[90vh] rounded-lg border border-slate-700 flex flex-col shadow-2xl">
-                <div class="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
-                    <h3 class="text-white font-bold"><i class="fas fa-file-code mr-2 text-blue-400"></i> Editor YAML: <span id="yamlModalTitle" class="font-mono text-sm text-slate-300"></span></h3>
-                    <div class="space-x-2">
-                        <button onclick="saveYaml()" class="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded text-xs font-bold transition">
-                            <i class="fas fa-save mr-2"></i> APLICAR ALTERAÇÕES
-                        </button>
-                        <button onclick="closeYamlModal()" class="text-slate-400 hover:text-white p-1"><i class="fas fa-times"></i></button>
-                    </div>
-                </div>
-                <div id="yamlEditor" class="flex-1 w-full"></div>
-                <div class="p-3 border-t border-slate-700 bg-slate-900 flex justify-between items-center text-[10px] text-slate-500">
-                    <span><i class="fas fa-info-circle mr-1"></i> Use com cuidado. Alterações inválidas podem causar falhas no recurso.</span>
-                    <span class="font-mono uppercase">Syntax: Kubernetes YAML</span>
-                </div>
-            </div>
-        </div>
-        <!-- MODAL DE CLONAGEM -->
-        <div id="cloneModal" class="fixed inset-0 bg-black/80 z-[100] hidden flex items-center justify-center p-4">
-            <div class="bg-slate-800 w-full max-w-md rounded-lg border border-slate-700 flex flex-col shadow-2xl">
-                <div class="p-4 border-b border-slate-700 flex justify-between items-center">
-                    <h3 class="text-white font-bold"><i class="fas fa-copy mr-2"></i> Clonar VM: <span id="cloneModalTitle"></span></h3>
-                    <button onclick="closeCloneModal()" class="text-slate-400 hover:text-white"><i class="fas fa-times"></i></button>
-                </div>
-                <div class="p-6 space-y-4">
-                    <div>
-                        <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Novo ID da VM</label>
-                        <input type="number" id="cloneNewId" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Nome da Nova VM</label>
-                        <input type="text" id="cloneNewName" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Node de Destino</label>
-                        <input type="text" id="cloneTargetNode" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:outline-none">
-                    </div>
-                </div>
-                <div class="p-4 border-t border-slate-700 text-right space-x-2">
-                    <button onclick="closeCloneModal()" class="text-slate-400 hover:text-white px-4 py-2">Cancelar</button>
-                    <button id="confirmCloneBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded">Clonar Agora</button>
-                </div>
-            </div>
-        </div>
+        
+        <div id="toastArea" class="fixed bottom-6 right-6 z-50 flex flex-col space-y-3"></div>
     </main>
 
-    <!-- CORE JAVASCRIPT LOGIC -->
+    <!-- MODAL -->
+    <div id="modalOverlay" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-card w-full max-w-lg rounded-3xl border border-slate-700 shadow-2xl overflow-hidden transform scale-95 transition-all duration-300" id="modalContent">
+            <div class="p-8 border-b border-slate-700/50 flex justify-between items-center bg-slate-800/30">
+                <h3 id="modalTitle" class="text-xl font-bold text-white">Criar Recurso</h3>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-white transition w-8 h-8 rounded-full hover:bg-slate-700 flex items-center justify-center"><i class="fas fa-times text-lg"></i></button>
+            </div>
+            <div class="p-8" id="modalBody">
+                <!-- Form will be injected here -->
+            </div>
+            <div class="p-8 bg-slate-800/30 border-t border-slate-700/50 flex justify-end space-x-4">
+                <button onclick="closeModal()" class="px-6 py-3 rounded-xl text-slate-400 font-bold hover:text-white transition">CANCELAR</button>
+                <button id="modalConfirmBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-900/20 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">CRIAR</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const apiBase = '/api';
         let currentView = 'dashboard';
-        let selectedNamespace = 'default';
-        let currentCloneData = null;
-        let cloningVmIds = new Set();
-        let yamlEditor = null;
-        let currentYamlTarget = null;
-        let cpuChart = null;
-        let memChart = null;
+        let selectedNamespace = 'all';
+        let cpuChart = null; let memChart = null;
+        let refreshInterval = null;
+        let activeCluster = sessionStorage.getItem('active_cluster') || '';
+        let viewCache = {}; 
+        
+        let session = { 
+            ticket: sessionStorage.getItem('pve_ticket'), 
+            csrf: sessionStorage.getItem('pve_csrf'), 
+            user: sessionStorage.getItem('pve_user'),
+            url: sessionStorage.getItem('pve_url')
+        };
 
-        // Inicializar Editor YAML (Ace)
-        function initYamlEditor() {
-            if (!yamlEditor) {
-                yamlEditor = ace.edit("yamlEditor");
-                yamlEditor.setTheme("ace/theme/tomorrow_night_eighties");
-                yamlEditor.session.setMode("ace/mode/yaml");
-                yamlEditor.setOptions({
-                    fontSize: "13px",
-                    showPrintMargin: false,
-                    useSoftTabs: true,
-                    tabSize: 2
-                });
+        function updateProxmoxButtonState() {
+            const btn = document.getElementById('vmLogoutBtn');
+            if(session.ticket) btn.classList.remove('hidden');
+            else btn.classList.add('hidden');
+        }
+
+        async function attemptLogin() {
+            const btn = event?.target;
+            if(btn) btn.disabled = true;
+            const u = document.getElementById('loginUser').value;
+            const p = document.getElementById('loginPass').value;
+            const ip = document.getElementById('loginIp').value;
+            if(!u || !p || !ip) { if(btn) btn.disabled = false; return showToast("Preencha todos os campos", "error"); }
+            let url = ip;
+            if(!url.startsWith('http')) url = 'https://' + url;
+            if(!url.includes(':', 8)) url = url + ':8006';
+            try {
+                const res = await fetch(`${apiBase}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p, url: url }) });
+                const d = await res.json();
+                if(res.ok && d.success) {
+                    session = { ticket: d.ticket, csrf: d.csrfPreventionToken, user: d.username, url: url };
+                    sessionStorage.setItem('pve_ticket', session.ticket); sessionStorage.setItem('pve_csrf', session.csrf); sessionStorage.setItem('pve_user', session.user); sessionStorage.setItem('pve_url', session.url);
+                    showToast(`Autenticado em ${url}`, "success"); updateProxmoxButtonState(); loadVmData();
+                } else showToast(d.message || "Erro de credenciais", "error");
+            } catch { showToast("Não foi possível contactar o Proxmox", "error"); }
+            finally { if(btn) btn.disabled = false; }
+        }
+
+        function logoutProxmox() { 
+            sessionStorage.removeItem('pve_ticket'); sessionStorage.removeItem('pve_csrf'); sessionStorage.removeItem('pve_user'); sessionStorage.removeItem('pve_url'); 
+            session = { ticket: null, csrf: null, user: null, url: null }; updateProxmoxButtonState();
+            if(currentView === 'vms') { delete viewCache['vms']; loadVmData(); }
+            showToast("Sessão Proxmox terminada", "info");
+        }
+
+        async function secureFetch(url, options = {}) {
+            if(!options.headers) options.headers = {};
+            if(session.ticket) { options.headers['X-PVE-Ticket'] = session.ticket; options.headers['X-PVE-CSRF'] = session.csrf; options.headers['X-PVE-Url'] = session.url; }
+            if(activeCluster) options.headers['X-K8s-Cluster'] = activeCluster;
+            document.getElementById('loadingIndicator').classList.remove('hidden');
+            try {
+                const res = await fetch(url, options);
+                if(res.status === 401 && url.includes('/vms')) { session.ticket = null; updateProxmoxButtonState(); loadVmData(); }
+                return res;
+            } finally { document.getElementById('loadingIndicator').classList.add('hidden'); }
+        }
+
+        function loadView(v, el, skipCache = false) {
+            currentView = v;
+            if(el) { document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active')); el.classList.add('active'); }
+            const titles = { 'dashboard': 'Visão Geral', 'nodes': 'Nodes', 'namespaces': 'Namespaces', 'pods': 'Pods', 'deployments': 'Deployments', 'services': 'Services', 'ingresses': 'Ingress', 'vms': 'Gerir VMs Proxmox', 'events': 'Eventos', 'clusters': 'Gerir Clusters' };
+            document.getElementById('pageTitle').innerText = titles[v] || 'Visão Geral';
+            const reqNs = ['pods','deployments','services','ingresses','events'];
+            if(reqNs.includes(v)) { document.getElementById('nsSelectorContainer').classList.remove('hidden'); loadNamespaceOptions(); }
+            else document.getElementById('nsSelectorContainer').classList.add('hidden');
+            if(v !== 'dashboard') { clearInterval(refreshInterval); refreshInterval = null; }
+            if(!skipCache && viewCache[v]) {
+                document.getElementById('mainContent').innerHTML = viewCache[v];
+                if(v === 'dashboard' && viewCache['dashboard_data']) renderDashboardCharts(viewCache['dashboard_data']);
+            } else { document.getElementById('mainContent').innerHTML = '<div class="flex justify-center py-20"><i class="fas fa-circle-notch fa-spin text-5xl text-blue-600 opacity-20"></i></div>'; }
+            if(v === 'vms') loadVmData();
+            else if(v === 'clusters') loadClustersList();
+            else if(!activeCluster) {
+                const h = `<div class="flex flex-col items-center justify-center py-24 text-slate-500 slide-up"><div class="w-24 h-24 bg-slate-800 rounded-3xl flex items-center justify-center mb-8 shadow-xl border border-slate-700/50"><i class="fas fa-dharmachakra text-4xl opacity-10"></i></div><p class="text-2xl font-bold text-white mb-2 tracking-tight">Nenhum Cluster Ativo</p><p class="max-w-xs text-center leading-relaxed text-slate-400">Para gerir recursos Kubernetes, configure e ative um cluster no menu <a onclick="loadView('clusters', null)" class="text-blue-500 cursor-pointer hover:underline font-bold">Gerir Clusters</a>.</p></div>`;
+                document.getElementById('mainContent').innerHTML = h; viewCache[v] = h;
             }
-        }
-        async function loadNamespaceOptions() {
-            try {
-                const res = await fetch(`${apiBase}/namespaces`);
-                const namespaces = await res.json();
-                const selector = document.getElementById('globalNamespaceSelector');
-                
-                selector.innerHTML = namespaces.map(ns => 
-                    `<option value="${ns.name}" ${ns.name === selectedNamespace ? 'selected' : ''} class="bg-slate-800">${ns.name}</option>`
-                ).join('');
-                
-                // Se o namespace selecionado desaparecer (ex: apagado), volta ao default
-                if(!namespaces.find(ns => ns.name === selectedNamespace)) {
-                    selectedNamespace = 'default';
-                    loadCurrentView();
-                }
-            } catch (err) { console.error("Erro ao carregar namespaces", err); }
-        }
-
-        function changeNamespace(ns) {
-            selectedNamespace = ns;
-            loadCurrentView();
-        }
-
-        function loadView(viewName, element) {
-            currentView = viewName;
-            
-            if(element) {
-                document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active', 'bg-slate-800', 'text-blue-400'));
-                element.classList.add('active', 'bg-slate-800', 'text-blue-400');
-            }
-            
-            const titles = { 
-                'dashboard': 'Visão Geral do Cluster', 
-                'nodes': 'Gestão de Nodes', 
-                'namespaces': 'Espaços Lógicos (Namespaces)', 
-                'pods': 'Instâncias (Pods)', 
-                'deployments': 'Aplicações (Deployments)', 
-                'services': 'Rede (Services)', 
-                'ingresses': 'Regras de Acesso (Ingress)',
-                'vms': 'Máquinas Virtuais (Proxmox)',
-                'events': 'Eventos do Cluster'
-            };
-            document.getElementById('pageTitle').innerText = titles[viewName] || 'Visão Geral';
-            
-            // Mostra/Esconde seletor de namespace
-            const nsSelectorContainer = document.getElementById('nsSelectorContainer');
-            if(['dashboard', 'nodes', 'namespaces', 'vms'].includes(viewName)) {
-                nsSelectorContainer.classList.add('hidden');
-            } else {
-                nsSelectorContainer.classList.remove('hidden');
-                loadNamespaceOptions();
-            }
-
-            document.getElementById('mainContent').innerHTML = `
-                <div class="flex h-64 justify-center items-center flex-col text-slate-400">
-                    <i class="fas fa-circle-notch fa-spin text-blue-500 text-4xl mb-4"></i>
-                    <p>A comunicar com o orquestrador...</p>
-                </div>`;
-            
-            if(viewName === 'dashboard') loadDashboardData();
-            else if(viewName === 'vms') loadVmData();
-            else if(viewName === 'events') loadEventsData();
-            else loadListData(viewName);
-        }
-
-        function loadCurrentView() { loadView(currentView, null); }
-
-        async function loadDashboardData() {
-            try {
-                const res = await fetch(`${apiBase}/cluster`);
-                const data = await res.json();
-                
-                document.getElementById('mainContent').innerHTML = `
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 fade-in mb-8">
-                        <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg flex items-center justify-between">
-                            <div><p class="text-slate-400 font-medium mb-1">Total de Nodes</p><h3 class="text-4xl font-bold text-white">${data.totalNodes}</h3></div>
-                            <div class="w-14 h-14 bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-400"><i class="fas fa-server text-2xl"></i></div>
-                        </div>
-                        <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg flex items-center justify-between">
-                            <div><p class="text-slate-400 font-medium mb-1">Pods (Run/Total)</p><h3 class="text-4xl font-bold text-white">${data.runningPods} <span class="text-xl text-slate-500">/ ${data.totalPods}</span></h3></div>
-                            <div class="w-14 h-14 bg-green-500/20 rounded-full flex items-center justify-center text-green-400"><i class="fas fa-cubes text-2xl"></i></div>
-                        </div>
-                        <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg flex items-center justify-between">
-                            <div><p class="text-slate-400 font-medium mb-1">Deployments</p><h3 class="text-4xl font-bold text-white">${data.totalDeployments}</h3></div>
-                            <div class="w-14 h-14 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-400"><i class="fas fa-layer-group text-2xl"></i></div>
-                        </div>
-                        <div class="bg-card rounded-lg border border-slate-700 p-6 shadow-lg flex items-center justify-between">
-                            <div><p class="text-slate-400 font-medium mb-1">Namespaces</p><h3 class="text-4xl font-bold text-white">${data.totalNamespaces}</h3></div>
-                            <div class="w-14 h-14 bg-rose-500/20 rounded-full flex items-center justify-center text-rose-400"><i class="fas fa-folder text-2xl"></i></div>
-                        </div>
-                    </div>
-
-                    <!-- RECURSOS DO CLUSTER COM GRÁFICOS -->
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 fade-in">
-                        <div class="bg-card rounded-xl border border-slate-700 p-8 shadow-2xl relative overflow-hidden">
-                            <div class="absolute top-0 right-0 p-4">
-                                ${data.hasRealMetrics ? '<span class="text-[10px] bg-green-500/20 text-green-400 px-3 py-1 rounded-full font-bold border border-green-500/30">REAL-TIME</span>' : '<span class="text-[10px] bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full font-bold border border-amber-500/30">ALOCADO</span>'}
-                            </div>
-                            <h4 class="text-white font-bold text-xl mb-1">Distribuição de CPU</h4>
-                            <p class="text-slate-500 text-xs mb-6 uppercase tracking-widest font-bold">Capacidade: ${data.totalCpu}</p>
-                            
-                            <div class="flex items-center justify-around">
-                                <div class="w-48 h-48">
-                                    <canvas id="cpuChart"></canvas>
-                                </div>
-                                <div class="space-y-4">
-                                    <div class="flex items-center">
-                                        <div class="w-3 h-3 bg-blue-500 rounded-full mr-3"></div>
-                                        <div><p class="text-xs text-slate-400 uppercase font-bold">Em Uso</p><p class="text-white font-bold">${data.cpuUsage}%</p></div>
-                                    </div>
-                                    <div class="flex items-center">
-                                        <div class="w-3 h-3 bg-slate-700 rounded-full mr-3"></div>
-                                        <div><p class="text-xs text-slate-400 uppercase font-bold">Livre</p><p class="text-white font-bold">${(100 - data.cpuUsage).toFixed(1)}%</p></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-card rounded-xl border border-slate-700 p-8 shadow-2xl relative overflow-hidden">
-                            <div class="absolute top-0 right-0 p-4">
-                                ${data.hasRealMetrics ? '<span class="text-[10px] bg-green-500/20 text-green-400 px-3 py-1 rounded-full font-bold border border-green-500/30">REAL-TIME</span>' : '<span class="text-[10px] bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full font-bold border border-amber-500/30">ALOCADO</span>'}
-                            </div>
-                            <h4 class="text-white font-bold text-xl mb-1">Distribuição de Memória</h4>
-                            <p class="text-slate-500 text-xs mb-6 uppercase tracking-widest font-bold">Capacidade: ${data.totalMem}</p>
-                            
-                            <div class="flex items-center justify-around">
-                                <div class="w-48 h-48">
-                                    <canvas id="memChart"></canvas>
-                                </div>
-                                <div class="space-y-4">
-                                    <div class="flex items-center">
-                                        <div class="w-3 h-3 bg-emerald-500 rounded-full mr-3"></div>
-                                        <div><p class="text-xs text-slate-400 uppercase font-bold">Em Uso</p><p class="text-white font-bold">${data.memUsage}%</p></div>
-                                    </div>
-                                    <div class="flex items-center">
-                                        <div class="w-3 h-3 bg-slate-700 rounded-full mr-3"></div>
-                                        <div><p class="text-xs text-slate-400 uppercase font-bold">Livre</p><p class="text-white font-bold">${(100 - data.memUsage).toFixed(1)}%</p></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-
-                // Renderizar os Gráficos
-                setTimeout(() => {
-                    renderDashboardCharts(data.cpuUsage, data.memUsage);
-                }, 100);
-
-            } catch (err) { showToast("Falha ao comunicar com API", "error"); }
-        }
-
-        function renderDashboardCharts(cpuUsage, memUsage) {
-            const chartConfig = (label, value, color) => ({
-                type: 'doughnut',
-                data: {
-                    datasets: [{
-                        data: [value, 100 - value],
-                        backgroundColor: [color, '#334155'],
-                        borderWidth: 0,
-                        hoverOffset: 4
-                    }]
-                },
-                options: {
-                    cutout: '80%',
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
-                }
-            });
-
-            if (cpuChart) cpuChart.destroy();
-            if (memChart) memChart.destroy();
-
-            cpuChart = new Chart(document.getElementById('cpuChart'), chartConfig('CPU', cpuUsage, '#3b82f6'));
-            memChart = new Chart(document.getElementById('memChart'), chartConfig('Memória', memUsage, '#10b981'));
-        }
-
-        async function loadEventsData() {
-            try {
-                const res = await fetch(`${apiBase}/events?ns=${selectedNamespace}`);
-                const data = await res.json();
-                
-                if(data.length === 0) {
-                    document.getElementById('mainContent').innerHTML = `
-                        <div class="bg-card border border-slate-700 rounded-lg p-10 text-center fade-in">
-                            <i class="fas fa-bell-slash text-slate-600 text-5xl mb-4"></i>
-                            <h3 class="text-xl text-white font-medium mb-2">Sem Eventos</h3>
-                            <p class="text-slate-400">Não existem eventos recentes no namespace <span class="text-blue-400">${selectedNamespace}</span>.</p>
-                        </div>`;
-                    return;
-                }
-
-                let html = `
-                <div class="fade-in">
-                    <div class="bg-card rounded-lg border border-slate-700 overflow-hidden shadow-xl">
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left text-slate-300">
-                                <thead class="bg-slate-800 text-slate-400 text-xs uppercase font-semibold border-b border-slate-700">
-                                    <tr>
-                                        <th class="px-6 py-4">Tipo</th>
-                                        <th class="px-6 py-4">Razão</th>
-                                        <th class="px-6 py-4">Mensagem</th>
-                                        <th class="px-6 py-4">Fonte</th>
-                                        <th class="px-6 py-4">Última Vez</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-700/50">
-                `;
-
-                data.forEach(e => {
-                    const typeColor = e.type === 'Warning' ? 'text-amber-400 bg-amber-400/10' : 'text-blue-400 bg-blue-400/10';
-                    html += `
-                        <tr class="hover:bg-slate-700/30 transition">
-                            <td class="px-6 py-4"><span class="${typeColor} px-2 py-1 rounded text-[10px] font-bold uppercase">${e.type}</span></td>
-                            <td class="px-6 py-4 font-bold text-white">${e.reason}</td>
-                            <td class="px-6 py-4 text-slate-400 text-xs max-w-md">${e.message}</td>
-                            <td class="px-6 py-4 text-slate-500 font-mono text-[10px]">${e.source}</td>
-                            <td class="px-6 py-4 text-slate-400 text-xs">${new Date(e.lastSeen).toLocaleString()}</td>
-                        </tr>
-                    `;
-                });
-
-                html += `</tbody></table></div></div></div>`;
-                document.getElementById('mainContent').innerHTML = html;
-            } catch (err) { showToast("Falha ao carregar eventos", "error"); }
-        }
-
-        async function loadListData(resource) {
-            try {
-                let url = `${apiBase}/${resource}`;
-                if(!['nodes', 'namespaces'].includes(resource)) {
-                    url += `?ns=${selectedNamespace}`;
-                }
-
-                const res = await fetch(url);
-                const data = await res.json();
-                
-                let createActionHTML = '';
-                if(resource !== 'nodes' && resource !== 'events') {
-                    createActionHTML = `
-                        <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 mb-6 flex flex-wrap gap-4 items-end fade-in">
-                            <div class="flex-1 min-w-[200px]">
-                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Nome do ${resource}</label>
-                                <input type="text" id="createNewName" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="Ex: meu-recurso">
-                            </div>
-                            
-                            ${resource === 'pods' || resource === 'deployments' ? `
-                            <div class="flex-1 min-w-[200px]">
-                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Imagem Docker</label>
-                                <input type="text" id="createNewImage" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="Ex: nginx" value="nginx">
-                            </div>` : ''}
-
-                            ${resource === 'deployments' ? `
-                            <div class="w-24">
-                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">CPU Limit</label>
-                                <input type="text" id="createCpuLimit" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="500m">
-                            </div>
-                            <div class="w-24">
-                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Mem Limit</label>
-                                <input type="text" id="createMemLimit" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="256Mi">
-                            </div>` : ''}
-
-                            ${resource === 'services' ? `
-                            <div class="w-32">
-                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Tipo</label>
-                                <select id="createServiceType" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:outline-none">
-                                    <option value="ClusterIP">ClusterIP</option>
-                                    <option value="NodePort">NodePort</option>
-                                    <option value="LoadBalancer">LoadBalancer</option>
-                                </select>
-                            </div>
-                            <div class="w-24">
-                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Porta</label>
-                                <input type="number" id="createServicePort" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" value="80">
-                            </div>
-                            <div class="w-24">
-                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">T. Port</label>
-                                <input type="number" id="createServiceTargetPort" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" value="80">
-                            </div>` : ''}
-
-                            ${resource === 'ingresses' ? `
-                            <div class="flex-1 min-w-[150px]">
-                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Host (Domínio)</label>
-                                <input type="text" id="createIngressHost" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="Ex: app.local" value="app.local">
-                            </div>
-                            <div class="flex-1 min-w-[150px]">
-                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Nome do Serviço</label>
-                                <input type="text" id="createIngressSvc" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="Ex: meu-servico">
-                            </div>
-                            <div class="w-24">
-                                <label class="block text-xs uppercase text-slate-400 font-bold mb-1">Porta</label>
-                                <input type="number" id="createIngressPort" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none" value="80">
-                            </div>` : ''}
-
-                            <button onclick="createResource('${resource}')" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded transition font-medium">
-                                <i class="fas fa-plus mr-2"></i> Criar em <span class="underline">${resource === 'namespaces' ? 'Cluster' : selectedNamespace}</span>
-                            </button>
-                        </div>
-                    `;
-                }
-
-                if(data.length === 0) {
-                    document.getElementById('mainContent').innerHTML = createActionHTML + `
-                        <div class="bg-card border border-slate-700 rounded-lg p-10 text-center fade-in">
-                            <i class="fas fa-box-open text-slate-600 text-5xl mb-4"></i>
-                            <h3 class="text-xl text-white font-medium mb-2">Nada Encontrado</h3>
-                            <p class="text-slate-400">Não existem registos em <span class="text-blue-400">${selectedNamespace}</span>.</p>
-                        </div>`;
-                    return;
-                }
-
-                const keys = Object.keys(data[0]);
-                let html = createActionHTML + `
-                <div class="fade-in">
-                    <div class="flex justify-between items-center mb-4">
-                        <p class="text-slate-400">A mostrar <span class="text-white font-bold">${data.length}</span> resultados em <span class="text-blue-400 font-bold">${resource === 'nodes' || resource === 'namespaces' ? 'Cluster' : selectedNamespace}</span>.</p>
-                    </div>
-                    <div class="bg-card rounded-lg border border-slate-700 overflow-hidden shadow-xl">
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left text-slate-300">
-                                <thead class="bg-slate-800 text-slate-400 text-xs uppercase font-semibold border-b border-slate-700">
-                                    <tr>
-                                        <th class="px-6 py-4">Nome</th>
-                                        ${keys.filter(k => k !== 'name' && k !== 'created' && k !== 'ip' && k !== 'namespace').map(k => `<th class="px-6 py-4">${k}</th>`).join('')}
-                                        <th class="px-6 py-4 text-right">Ação</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-700/50">
-                `;
-
-                data.forEach(item => {
-                    let statusColor = "text-slate-300";
-                    if(item.status === 'Running' || item.status === 'True' || item.status === 'Active') statusColor = "text-green-400 bg-green-400/10 px-2 py-1 rounded-full text-xs font-bold";
-                    if(item.status === 'Pending' || item.status === 'False' || item.status === 'ContainerCreating') statusColor = "text-amber-400 bg-amber-400/10 px-2 py-1 rounded-full text-xs font-bold animate-pulse";
-                    if(item.status === 'Failed') statusColor = "text-red-400 bg-red-400/10 px-2 py-1 rounded-full text-xs font-bold";
-
-                    html += `
-                        <tr class="hover:bg-slate-700/30 transition">
-                            <td class="px-6 py-4 font-medium text-white">${item.name}</td>
-                            ${keys.filter(k => k !== 'name' && k !== 'created' && k !== 'ip' && k !== 'namespace').map(key => {
-                                let val = item[key] ?? '-';
-                                if(key === 'status') return `<td class="px-6 py-4"><span class="${statusColor}">${val}</span></td>`;
-                                if(Array.isArray(val)) return `<td class="px-6 py-4 text-slate-400">${val.join(', ') || '-'}</td>`;
-                                
-                                // Caso especial para Replicas em Deployments (Adicionar botões de Scale)
-                                if(resource === 'deployments' && key === 'replicas') {
-                                    return `
-                                    <td class="px-6 py-4">
-                                        <div class="flex items-center space-x-2">
-                                            <button onclick="scaleDeployment('${item.name}', ${val - 1})" class="text-slate-400 hover:text-white"><i class="fas fa-minus-circle"></i></button>
-                                            <span class="text-white font-bold w-4 text-center">${val}</span>
-                                            <button onclick="scaleDeployment('${item.name}', ${val + 1})" class="text-slate-400 hover:text-white"><i class="fas fa-plus-circle"></i></button>
-                                        </div>
-                                    </td>`;
-                                }
-
-                                return `<td class="px-6 py-4 text-slate-400">${val}</td>`;
-                            }).join('')}
-                            <td class="px-6 py-4 text-right space-x-2">
-                                ${resource === 'pods' ? `
-                                <button onclick="viewLogs('${item.name}')" class="text-blue-400 hover:text-blue-300 bg-blue-400/10 hover:bg-blue-400/20 p-2 rounded transition" title="Ver Logs">
-                                    <i class="fas fa-terminal"></i>
-                                </button>` : ''}
-
-                                ${resource !== 'nodes' && resource !== 'events' ? `
-                                <button onclick="openYamlModal('${resource}','${item.name}')" class="text-indigo-400 hover:text-indigo-300 bg-indigo-400/10 hover:bg-indigo-400/20 p-2 rounded transition" title="Editar YAML">
-                                    <i class="fas fa-file-code"></i>
-                                </button>` : ''}
-
-                                ${resource === 'nodes' ? 
-                                `<span class="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded border border-slate-700">Sistema</span>` :
-                                `<button onclick="deleteResource('${resource}','${item.name}')" class="text-red-400 hover:text-red-300 bg-red-400/10 hover:bg-red-400/20 p-2 rounded transition" title="Apagar">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>`}
-                            </td>
-                        </tr>
-                    `;
-                });
-
-                html += `</tbody></table></div></div></div>`;
-                document.getElementById('mainContent').innerHTML = html;
-            } catch (err) { showToast("Falha ao comunicar com orquestrador", "error"); }
-        }
-
-        // --- FUNÇÕES YAML EDITOR ---
-        async function openYamlModal(resource, name) {
-            currentYamlTarget = { resource, name, ns: selectedNamespace };
-            document.getElementById('yamlModal').classList.remove('hidden');
-            document.getElementById('yamlModalTitle').innerText = `${resource}/${name}`;
-            
-            initYamlEditor();
-            yamlEditor.setValue("A carregar YAML...");
-            yamlEditor.setReadOnly(true);
-
-            try {
-                const res = await fetch(`${apiBase}/yaml/${resource}/${name}?ns=${selectedNamespace}`);
-                const data = await res.json();
-                yamlEditor.setValue(data.yaml, -1);
-                yamlEditor.setReadOnly(false);
-            } catch (err) {
-                yamlEditor.setValue("Erro ao carregar ficheiro YAML.");
-            }
-        }
-
-        function closeYamlModal() {
-            document.getElementById('yamlModal').classList.add('hidden');
-        }
-
-        async function saveYaml() {
-            const yaml = yamlEditor.getValue();
-            const { resource, name, ns } = currentYamlTarget;
-
-            showToast("A aplicar alterações YAML...", "info");
-
-            try {
-                const res = await fetch(`${apiBase}/yaml/${resource}/${name}?ns=${ns}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ yaml })
-                });
-
-                if(res.ok) {
-                    showToast("YAML aplicado com sucesso!", "success");
-                    closeYamlModal();
-                    loadCurrentView();
-                } else {
-                    const err = await res.json();
-                    alert(`Falha ao aplicar YAML:\n${err.message}`);
-                }
-            } catch (err) { showToast("Erro de rede.", "error"); }
+            else if(v === 'dashboard') { loadDashboardData(); if(!refreshInterval) refreshInterval = setInterval(loadDashboardData, 10000); }
+            else if(v === 'events') loadEventsData();
+            else loadListData(v);
         }
 
         async function loadVmData() {
+            if(!session.ticket) {
+                const h = `<div class="flex justify-center py-10 slide-up"><div class="bg-card glass p-10 rounded-[2.5rem] border border-slate-700/50 shadow-2xl w-full max-w-md"><div class="text-center mb-8"><div class="w-16 h-16 bg-blue-600/10 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4"><i class="fas fa-desktop text-2xl"></i></div><h3 class="text-2xl font-bold text-white tracking-tight">Proxmox Login</h3><p class="text-slate-400 mt-1 text-xs">Ligue-se ao nó Proxmox para gerir a infraestrutura</p></div><div class="space-y-4"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">IP do Servidor</label><input type="text" id="loginIp" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="ex: 192.168.24.196"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Utilizador</label><input type="text" id="loginUser" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="root"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Senha</label><input type="password" id="loginPass" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="••••••••"></div><button onclick="attemptLogin()" class="w-full bg-gradient-to-r from-blue-600 to-blue-500 py-4 rounded-xl font-bold mt-4 hover:shadow-lg hover:shadow-blue-900/40 transition-all active:scale-95 text-white tracking-widest text-xs">LIGAR AO PROXMOX</button></div></div></div>`;
+                if (currentView === 'vms') document.getElementById('mainContent').innerHTML = h; return;
+            }
             try {
-                const res = await fetch(`${apiBase}/vms`);
+                const res = await secureFetch(`${apiBase}/vms`);
                 const vms = await res.json();
-                
-                // Buscar nós do K8s para o mapeamento visual
-                let k8sNodes = [];
-                try {
-                    const nodesRes = await fetch(`${apiBase}/nodes`);
-                    k8sNodes = await nodesRes.json();
-                } catch(e) { console.error("Não foi possível carregar nós para mapeamento."); }
-
-                if (vms.length === 0) {
-                    document.getElementById('mainContent').innerHTML = `
-                        <div class="bg-card border border-slate-700 rounded-lg p-10 text-center fade-in">
-                            <i class="fas fa-desktop text-slate-600 text-5xl mb-4"></i>
-                            <h3 class="text-xl text-white font-medium mb-2">Nenhuma VM Encontrada</h3>
-                            <p class="text-slate-400">Não foi possível encontrar máquinas virtuais no cluster Proxmox.</p>
-                        </div>`;
-                    return;
-                }
-
-                let html = `
-                <div class="fade-in">
-                    <div class="bg-card rounded-lg border border-slate-700 overflow-hidden shadow-xl">
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left text-slate-300">
-                                <thead class="bg-slate-800 text-slate-400 text-xs uppercase font-semibold border-b border-slate-700">
-                                    <tr>
-                                        <th class="px-6 py-4">ID</th>
-                                        <th class="px-6 py-4">Nome</th>
-                                        <th class="px-6 py-4">Status</th>
-                                        <th class="px-6 py-4">Node</th>
-                                        <th class="px-6 py-4">CPU %</th>
-                                        <th class="px-6 py-4">Memória (GB)</th>
-                                        <th class="px-6 py-4 text-right">Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-700/50">
-                `;
-
+                if (currentView !== 'vms') return;
+                let h = `<div class="bg-card rounded-2xl overflow-hidden border border-slate-700 shadow-2xl slide-up"><table class="w-full text-left"><thead class="bg-slate-800/80 text-[10px] uppercase font-bold text-slate-400 tracking-wider"><tr class="border-b border-slate-700/50"><th class="px-8 py-5">VMID</th><th class="px-8 py-5">Nome</th><th class="px-8 py-5 text-center">Estado</th><th class="px-8 py-5 text-right">Controlo</th></tr></thead><tbody class="divide-y divide-slate-700/30">`;
                 vms.forEach(vm => {
-                    const isCloning = cloningVmIds.has(vm.vmId);
-                    let statusColor = vm.status === 'running' ? "text-green-400 bg-green-400/10 px-2 py-1 rounded-full text-xs font-bold" : "text-red-400 bg-red-400/10 px-2 py-1 rounded-full text-xs font-bold";
-                    let statusText = vm.status;
-
-                    if (isCloning) {
-                        statusColor = "text-blue-400 bg-blue-400/10 px-2 py-1 rounded-full text-xs font-bold animate-pulse";
-                        statusText = "cloning...";
-                    }
-
-                    const memoryGB = (vm.memory / 1024 / 1024 / 1024).toFixed(2);
-                    const isK8sNode = k8sNodes.some(n => n.name.toLowerCase() === vm.name.toLowerCase());
-                    const k8sBadge = isK8sNode ? `<span class="ml-2 bg-blue-500/20 text-blue-400 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/30 font-bold"><i class="fas fa-dharmachakra mr-1"></i>K8S NODE</span>` : '';
-
-                    const btnDisabled = isCloning ? 'disabled opacity-30 cursor-not-allowed' : '';
-
-                    html += `
-                        <tr class="hover:bg-slate-700/30 transition ${isCloning ? 'bg-blue-500/5' : ''}">
-                            <td class="px-6 py-4 font-mono text-blue-400">${vm.vmId}</td>
-                            <td class="px-6 py-4 font-medium text-white flex items-center">
-                                ${vm.name} ${k8sBadge}
-                                ${isCloning ? '<i class="fas fa-spinner fa-spin ml-2 text-blue-400"></i>' : ''}
-                            </td>
-                            <td class="px-6 py-4"><span class="${statusColor}">${statusText}</span></td>
-                            <td class="px-6 py-4 text-slate-400">${vm.node}</td>
-                            <td class="px-6 py-4 text-slate-400">${(vm.cpu * 100).toFixed(1)}%</td>
-                            <td class="px-6 py-4 text-slate-400">${memoryGB} GB</td>
-                            <td class="px-6 py-4 text-right space-x-2">
-                                <button onclick="openCloneModal('${vm.node}', ${vm.vmId}, '${vm.name}')" class="text-blue-400 hover:text-blue-300 p-2 ${btnDisabled}" title="Clonar VM" ${btnDisabled}>
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                                <button onclick="vmAction('${vm.node}', ${vm.vmId}, 'start')" class="text-green-400 hover:text-green-300 p-2 ${btnDisabled}" title="Ligar" ${btnDisabled}>
-                                    <i class="fas fa-play"></i>
-                                </button>
-                                <button onclick="vmAction('${vm.node}', ${vm.vmId}, 'shutdown')" class="text-amber-400 hover:text-amber-300 p-2 ${btnDisabled}" title="Desligar" ${btnDisabled}>
-                                    <i class="fas fa-power-off"></i>
-                                </button>
-                                <button onclick="vmAction('${vm.node}', ${vm.vmId}, 'stop')" class="text-red-400 hover:text-red-300 p-2 ${btnDisabled}" title="Parar (Forçado)" ${btnDisabled}>
-                                    <i class="fas fa-stop"></i>
-                                </button>
-                                <button onclick="deleteVm('${vm.node}', ${vm.vmId}, '${vm.name}')" class="text-red-600 hover:text-red-500 p-2 ${btnDisabled}" title="Apagar VM" ${btnDisabled}>
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    `;
+                    const s = vm.status === 'running' ? 'bg-green-500/20 text-green-400 border-green-500/20' : 'bg-red-500/20 text-red-400 border-red-500/20';
+                    h += `<tr class="hover:bg-slate-800/30 transition group"><td class="px-8 py-5 font-mono text-blue-400 font-bold">${vm.vmId}</td><td class="px-8 py-5 font-bold text-white">${vm.name} <span class="block text-[10px] text-slate-500 font-normal uppercase tracking-tighter mt-0.5">Node: ${vm.node}</span></td><td class="px-8 py-5 text-center"><span class="px-3 py-1 rounded-full text-[10px] font-bold uppercase border ${s}">${vm.status}</span></td><td class="px-8 py-5 text-right space-x-2"><button onclick="vmAction('${vm.node}', ${vm.vmId}, 'start')" class="w-10 h-10 rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white transition shadow-sm"><i class="fas fa-play"></i></button><button onclick="vmAction('${vm.node}', ${vm.vmId}, 'shutdown')" class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500 hover:text-white transition shadow-sm"><i class="fas fa-power-off"></i></button></td></tr>`;
                 });
-
-                html += `</tbody></table></div></div></div>`;
-                document.getElementById('mainContent').innerHTML = html;
-            } catch (err) { 
-                showToast("Falha ao carregar VMs do Proxmox", "error"); 
+                const finalH = h + `</tbody></table></div>`; document.getElementById('mainContent').innerHTML = finalH; viewCache['vms'] = finalH;
+            } catch { 
+                if (currentView !== 'vms') return;
+                const errH = '<div class="text-center py-20 bg-card rounded-2xl border border-slate-700 slide-up"><i class="fas fa-exclamation-triangle text-amber-500 text-3xl mb-4"></i><p class="text-white font-bold">Erro de Conetividade</p><p class="text-slate-400 text-xs mt-1">Verifique o IP e se o Proxmox permite ligações à API.</p></div>';
+                document.getElementById('mainContent').innerHTML = errH; viewCache['vms'] = errH;
             }
         }
 
-        // --- FUNÇÕES DE CLONAGEM ---
-        function openCloneModal(node, vmid, name) {
-            currentCloneData = { node, vmid };
-            document.getElementById('cloneModal').classList.remove('hidden');
-            document.getElementById('cloneModalTitle').innerText = name;
-            document.getElementById('cloneNewId').value = vmid + 100; // Sugestão
-            document.getElementById('cloneNewName').value = name + "-clone";
-            document.getElementById('cloneTargetNode').value = node;
-            
-            document.getElementById('confirmCloneBtn').onclick = () => confirmClone();
+        async function vmAction(n, id, a) {
+            const btn = event.currentTarget; const icon = btn.querySelector('i'); const oldIcon = icon.className; icon.className = "fas fa-circle-notch fa-spin"; btn.disabled = true;
+            const res = await secureFetch(`${apiBase}/vms/${n}/${id}/action`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: a }) });
+            if(res.ok) { showToast(`${a.toUpperCase()} enviado para VM ${id}`, "success"); setTimeout(loadVmData, 2000); } 
+            else { icon.className = oldIcon; btn.disabled = false; showToast("Erro ao executar ação", "error"); }
         }
 
-        function closeCloneModal() {
-            document.getElementById('cloneModal').classList.add('hidden');
-        }
-
-        async function confirmClone() {
-            const newId = parseInt(document.getElementById('cloneNewId').value);
-            const newName = document.getElementById('cloneNewName').value;
-            const targetNode = document.getElementById('cloneTargetNode').value;
-
-            if(!newId || !newName || !targetNode) return showToast("Preencha todos os campos", "error");
-
-            showToast("A iniciar clonagem... Isto pode demorar vários minutos.", "info");
-            
-            // Adiciona ao estado de clonagem e fecha modal
-            cloningVmIds.add(newId);
-            closeCloneModal();
-            loadVmData(); // Atualiza logo a tabela para mostrar o loading
-
+        async function loadClustersList() {
             try {
-                const res = await fetch(`${apiBase}/vms/${currentCloneData.node}/${currentCloneData.vmid}/clone`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ newId, name: newName, targetNode, full: true })
-                });
+                const res = await secureFetch(`${apiBase}/config/clusters`); const clusters = await res.json();
+                const h = `<div class="grid grid-cols-1 lg:grid-cols-2 gap-10 slide-up"><div class="bg-card p-8 rounded-[2rem] border border-slate-700/50 shadow-xl"><h4 class="text-white font-bold mb-6 text-[10px] uppercase tracking-[0.2em] flex items-center"><i class="fas fa-plus-circle mr-3 text-blue-500"></i> Configurar Novo Cluster</h4><div class="space-y-4"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Identificador</label><input type="text" id="newClusterName" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="ex: MicroK8s-Lab"></div><div class="grid grid-cols-2 gap-4"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Importar de IP</label><input type="text" id="fetchIp" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="192.168.1.100"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Porto / Ficheiro</label><div class="flex space-x-2"><input type="number" id="fetchPort" value="8080" class="w-20 bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"><button onclick="fetchYamlFromUrl(this)" class="flex-1 bg-slate-700 hover:bg-blue-600 text-white rounded-xl transition flex items-center justify-center" title="Importar de URL"><i class="fas fa-download mr-2 text-xs"></i> <span class="text-[10px] font-bold">URL</span></button><input type="file" id="yamlFileInput" accept=".yaml,.yml" class="hidden" onchange="importYamlFile(this)"><button onclick="document.getElementById('yamlFileInput').click()" class="flex-1 bg-slate-700 hover:bg-indigo-600 text-white rounded-xl transition flex items-center justify-center" title="Importar Ficheiro Local"><i class="fas fa-file-import mr-2 text-xs"></i> <span class="text-[10px] font-bold">ARQUIVO</span></button></div></div></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Kubeconfig YAML</label><textarea id="newClusterYaml" rows="8" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="Cole o output do comando 'microk8s config' ou use a opção de importar"></textarea></div><button onclick="saveNewCluster()" class="w-full bg-blue-600 py-4 rounded-xl font-bold mt-2 hover:bg-blue-500 shadow-lg shadow-blue-900/30 transition-all active:scale-95 text-white tracking-widest text-xs uppercase">GUARDAR CLUSTER</button></div></div><div class="bg-card p-8 rounded-[2rem] border border-slate-700/50 shadow-xl flex flex-col"><h4 class="text-white font-bold mb-6 text-[10px] uppercase tracking-[0.2em] flex items-center"><i class="fas fa-list mr-3 text-blue-500"></i> Clusters Registados</h4><div class="space-y-3 flex-1">${clusters.length === 0 ? '<p class="text-slate-600 text-center py-20 italic">Nenhum cluster configurado.</p>' : ''}${clusters.map(n => `<div class="flex justify-between items-center p-5 bg-slate-900/30 rounded-2xl border ${n === activeCluster ? 'border-blue-500 bg-blue-500/5' : 'border-slate-700/50'} hover:border-slate-500 transition-all group"><div class="flex items-center"><i class="fas fa-dharmachakra mr-4 ${n === activeCluster ? 'text-blue-500' : 'text-slate-600 group-hover:text-slate-400'} transition"></i><span class="font-bold text-white tracking-tight">${n}</span></div><div class="flex items-center space-x-2"><button onclick="switchCluster('${n}')" class="px-5 py-2 rounded-xl text-[10px] font-bold tracking-widest ${n === activeCluster ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white'} transition-all active:scale-95">${n === activeCluster ? 'ATIVO' : 'LIGAR'}</button><button onclick="deleteCluster('${n}')" class="w-10 h-10 flex items-center justify-center text-slate-600 hover:text-red-500 transition-colors"><i class="fas fa-trash-alt"></i></button></div></div>`).join('')}</div></div></div>`;
+                document.getElementById('mainContent').innerHTML = h; viewCache['clusters'] = h;
+            } catch { showToast("Falha ao ler clusters", "error"); }
+        }
 
-                if(res.ok) {
-                    showToast("Clonagem concluída com sucesso no Proxmox!", "success");
-                } else {
-                    showToast("O Proxmox iniciou a tarefa, mas houve um aviso. Verifica o painel.", "error");
-                }
-            } catch (err) { 
-                showToast("Erro de rede ao comunicar com o Proxmox.", "error"); 
-            } finally {
-                // Remove o estado de loading após um tempo de segurança ou nova carga
-                setTimeout(() => {
-                    cloningVmIds.delete(newId);
-                    loadVmData();
-                }, 5000); 
+        async function fetchYamlFromUrl(btn) {
+            const ip = document.getElementById('fetchIp').value; const port = document.getElementById('fetchPort').value;
+            if(!ip) return showToast("Introduza o IP", "error");
+            const icon = btn.querySelector('i'); icon.className = "fas fa-circle-notch fa-spin"; btn.disabled = true;
+            try {
+                const res = await secureFetch(`${apiBase}/config/fetch-yaml?ip=${ip}&port=${port}`); const d = await res.json();
+                if(res.ok) { document.getElementById('newClusterYaml').value = d.yaml; showToast("YAML importado com sucesso", "success"); } 
+                else showToast(d.message || "Erro ao importar YAML", "error");
+            } catch { showToast("Erro ao contactar servidor", "error"); } 
+            finally { icon.className = "fas fa-download"; btn.disabled = false; }
+        }
+
+        function importYamlFile(input) {
+            const file = input.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => { document.getElementById('newClusterYaml').value = e.target.result; showToast(`Ficheiro '${file.name}' importado`, "success"); input.value = ''; };
+            reader.onerror = () => showToast("Erro ao ler ficheiro", "error"); reader.readAsText(file);
+        }
+
+        async function saveNewCluster() {
+            const btn = event.currentTarget; const oldText = btn.innerText; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>'; btn.disabled = true;
+            const n = document.getElementById('newClusterName').value; const y = document.getElementById('newClusterYaml').value; 
+            if(!n || !y) { btn.innerText = oldText; btn.disabled = false; return showToast("Preencha o nome e o YAML", "error"); }
+            try {
+                const res = await secureFetch(`${apiBase}/config/clusters`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: n, yaml: y }) });
+                if(res.ok) { showToast("Cluster registado com sucesso", "success"); loadClustersList(); } else showToast("Erro ao guardar cluster", "error");
+            } finally { btn.innerText = oldText; btn.disabled = false; }
+        }
+
+        function switchCluster(n) { activeCluster = n; sessionStorage.setItem('active_cluster', n); updateHeaderClusterStatus(); viewCache = {}; loadView(currentView, null, true); }
+        async function deleteCluster(n) { if(!confirm(`Apagar cluster '${n}'?`)) return; await secureFetch(`${apiBase}/config/clusters/${n}`, { method: 'DELETE' }); if(activeCluster === n) { activeCluster = ''; sessionStorage.removeItem('active_cluster'); updateHeaderClusterStatus(); } loadClustersList(); }
+
+        async function loadDashboardData() {
+            try {
+                const res = await secureFetch(`${apiBase}/cluster`); const d = await res.json();
+                const h = `<div class="grid grid-cols-2 lg:grid-cols-4 gap-8 mb-10 slide-up"><div class="bg-card p-6 rounded-2xl border border-slate-700/50 shadow-lg relative overflow-hidden group card-hover"><div class="relative z-10"><p class="text-slate-500 text-[10px] uppercase font-bold tracking-[0.2em] mb-1">Nodes</p><h3 class="text-3xl font-black text-white">${d.totalNodes}</h3></div><i class="fas fa-server absolute -right-2 -bottom-2 text-6xl text-white/5 group-hover:text-blue-500/10 transition-all transform group-hover:scale-110"></i></div><div class="bg-card p-6 rounded-2xl border border-slate-700/50 shadow-lg relative overflow-hidden group card-hover"><div class="relative z-10"><p class="text-slate-500 text-[10px] uppercase font-bold tracking-[0.2em] mb-1">Pods Ativos</p><h3 class="text-3xl font-black text-white">${d.runningPods}/${d.totalPods}</h3></div><i class="fas fa-cubes absolute -right-2 -bottom-2 text-6xl text-white/5 group-hover:text-green-500/10 transition-all transform group-hover:scale-110"></i></div><div class="bg-card p-6 rounded-2xl border border-slate-700/50 shadow-lg relative overflow-hidden group card-hover"><div class="relative z-10"><p class="text-slate-500 text-[10px] uppercase font-bold tracking-[0.2em] mb-1">Aplicações</p><h3 class="text-3xl font-black text-white">${d.totalDeployments}</h3></div><i class="fas fa-layer-group absolute -right-2 -bottom-2 text-6xl text-white/5 group-hover:text-amber-500/10 transition-all transform group-hover:scale-110"></i></div><div class="bg-card p-6 rounded-2xl border border-slate-700/50 shadow-lg relative overflow-hidden group card-hover"><div class="relative z-10"><p class="text-slate-500 text-[10px] uppercase font-bold tracking-[0.2em] mb-1">Namespaces</p><h3 class="text-3xl font-black text-white">${d.totalNamespaces}</h3></div><i class="fas fa-folder absolute -right-2 -bottom-2 text-6xl text-white/5 group-hover:text-rose-500/10 transition-all transform group-hover:scale-110"></i></div></div><div class="grid grid-cols-1 lg:grid-cols-2 gap-10 h-80 slide-up"><div class="bg-card p-8 rounded-[2.5rem] border border-slate-700/50 flex flex-col items-center justify-center relative shadow-inner group"><p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-6">Uso de CPU Cluster: <span class="text-slate-300">${d.totalCpu}</span></p><div class="w-48 h-48"><canvas id="cpuChart"></canvas></div><div class="absolute inset-0 flex items-center justify-center pointer-events-none mt-10"><span class="text-3xl font-black text-blue-500 drop-shadow-lg">${d.cpuUsage}%</span></div></div><div class="bg-card p-8 rounded-[2.5rem] border border-slate-700/50 flex flex-col items-center justify-center relative shadow-inner group"><p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-6">Uso de RAM Cluster: <span class="text-slate-300">${d.totalMem}</span></p><div class="w-48 h-48"><canvas id="memChart"></canvas></div><div class="absolute inset-0 flex items-center justify-center pointer-events-none mt-10"><span class="text-3xl font-black text-green-500 drop-shadow-lg">${d.memUsage}%</span></div></div></div>`;
+                document.getElementById('mainContent').innerHTML = h; viewCache['dashboard'] = h; viewCache['dashboard_data'] = d; renderDashboardCharts(d);
+            } catch { 
+                const errH = '<div class="text-center py-20 bg-card rounded-2xl border border-slate-700 shadow-inner slide-up"><i class="fas fa-plug text-slate-600 text-4xl mb-4"></i><p class="text-white font-bold">Cluster Offline</p><p class="text-slate-500 text-xs mt-1">Ligue a VM Master ou verifique o IP no YAML.</p></div>';
+                document.getElementById('mainContent').innerHTML = errH; viewCache['dashboard'] = errH;
             }
         }
 
-        async function vmAction(node, vmid, action) {
-            try {
-                const res = await fetch(`${apiBase}/vms/${node}/${vmid}/action`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: action })
-                });
-
-                if (res.ok) {
-                    showToast(`Ação ${action} enviada com sucesso para VM ${vmid}`, "success");
-                    setTimeout(loadVmData, 2000); // Esperar um pouco para a mudança de estado refletir
-                } else {
-                    showToast(`Falha ao executar ${action}`, "error");
-                }
-            } catch (err) { showToast("Erro de rede.", "error"); }
+        function renderDashboardCharts(d) {
+            const cfg = (v, c) => ({ type: 'doughnut', data: { datasets: [{ data: [v||0.1, 100-(v||0.1)], backgroundColor: [c, '#1e293b'], borderWidth: 0, borderRadius: 10, hoverOffset: 4 }] }, options: { cutout: '82%', maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, animation: { duration: 1000 } } });
+            if(cpuChart) cpuChart.destroy(); if(memChart) memChart.destroy();
+            const cpuCtx = document.getElementById('cpuChart'); const memCtx = document.getElementById('memChart');
+            if(cpuCtx && memCtx) { cpuChart = new Chart(cpuCtx, cfg(d.cpuUsage, '#3b82f6')); memChart = new Chart(memCtx, cfg(d.memUsage, '#10b981')); }
         }
 
-        async function deleteVm(node, vmid, name) {
-            if(!confirm(`⚠️ ATENÇÃO: Vai apagar permanentemente a VM '${name}' (${vmid}) do Proxmox.\nEsta ação não pode ser desfeita. Deseja continuar?`)) return;
+        function addPortRow() {
+            const container = document.getElementById('portsContainer'); const id = Date.now(); const row = document.createElement('div'); row.id = `port-row-${id}`; row.className = "grid grid-cols-12 gap-3 items-end animate-fadeIn mb-3";
+            row.innerHTML = `<div class="col-span-4"><label class="block text-[8px] font-bold text-slate-600 uppercase mb-1 ml-1">Porta (Svc)</label><input type="number" class="svc-port w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-xs" value="80"></div><div class="col-span-4"><label class="block text-[8px] font-bold text-slate-600 uppercase mb-1 ml-1">Target (Pod)</label><input type="number" class="svc-tport w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-xs" value="80"></div><div class="col-span-3"><label class="block text-[8px] font-bold text-slate-600 uppercase mb-1 ml-1">Proto</label><select class="svc-proto w-full bg-slate-900/50 border border-slate-700 rounded-xl px-2 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-[10px] font-bold"><option>TCP</option><option>UDP</option></select></div><div class="col-span-1"><button onclick="removePortRow('${id}')" class="w-full h-[38px] flex items-center justify-center text-slate-600 hover:text-red-500 transition-colors"><i class="fas fa-minus-circle"></i></button></div>`;
+            container.appendChild(row);
+        }
+        function removePortRow(id) { const row = document.getElementById(`port-row-${id}`); if(row) row.remove(); }
 
-            try {
-                const res = await fetch(`${apiBase}/vms/${node}/${vmid}`, {
-                    method: 'DELETE'
-                });
+        function addEnvRow() {
+            const container = document.getElementById('envContainer'); const id = Date.now(); const row = document.createElement('div'); row.id = `env-row-${id}`; row.className = "grid grid-cols-12 gap-3 items-end animate-fadeIn mb-3";
+            row.innerHTML = `<div class="col-span-5"><input type="text" class="env-key w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-xs" placeholder="CHAVE"></div><div class="col-span-6"><input type="text" class="env-val w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-xs" placeholder="VALOR"></div><div class="col-span-1"><button onclick="removeEnvRow('${id}')" class="w-full h-[38px] flex items-center justify-center text-slate-600 hover:text-red-500 transition-colors"><i class="fas fa-minus-circle"></i></button></div>`;
+            container.appendChild(row);
+        }
+        function removeEnvRow(id) { const row = document.getElementById(`env-row-${id}`); if(row) row.remove(); }
 
-                if (res.ok) {
-                    showToast(`VM ${name} apagada com sucesso!`, "success");
-                    loadVmData();
-                } else {
-                    showToast("Falha ao apagar VM. Verifique se está desligada.", "error");
-                }
-            } catch (err) { showToast("Erro de rede.", "error"); }
+        function validateCreateForm() {
+            const btn = document.getElementById('modalConfirmBtn'); const nameInput = document.querySelector('#modalBody input[id$="_name"]');
+            if(nameInput && nameInput.value.trim() === '') btn.disabled = true; else btn.disabled = false;
         }
 
-        async function createResource(resourceType) {
-            let name = document.getElementById('createNewName').value;
-            if(!name) return showToast("Por favor insira um nome", "error");
-            name = name.toLowerCase().replace(/[^a-z0-9-.]/g, '-').replace(/-+/g, '-');
-            
-            let payload = { namespace: selectedNamespace, name: name };
-            if(resourceType === 'namespaces') delete payload.namespace;
+        async function updateIngressServiceOptions(ns) {
+            const select = document.getElementById('ing_svc'); if(!select) return;
+            try {
+                const res = await secureFetch(`${apiBase}/services?ns=${ns}`); const services = await res.json();
+                if(services.length === 0) select.innerHTML = '<option value="">Nenhum serviço encontrado</option>';
+                else select.innerHTML = services.map(s => `<option value="${s.name}">${s.name.toUpperCase()}</option>`).join('');
+            } catch { select.innerHTML = '<option value="">Erro ao carregar</option>'; }
+        }
 
-            if(resourceType === 'pods' || resourceType === 'deployments') {
-                payload.image = document.getElementById('createNewImage').value;
-                if(resourceType === 'deployments') {
-                    payload.replicas = 1;
-                    payload.cpuLimit = document.getElementById('createCpuLimit').value || null;
-                    payload.memLimit = document.getElementById('createMemLimit').value || null;
-                }
+        async function loadListData(t) {
+            try {
+                let url = `${apiBase}/${t}`; if(!['nodes', 'namespaces'].includes(t)) url += `?ns=${selectedNamespace}`;
+                const res = await secureFetch(url); const d = await res.json();
+                let h = `<div class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 slide-up"><div class="flex items-center space-x-3"><div class="w-2 h-8 bg-blue-600 rounded-full"></div><h2 class="text-xl font-bold text-white uppercase tracking-[0.1em]">${t === 'ingresses' ? 'Ingress' : t}</h2>${!['nodes', 'namespaces'].includes(t) ? `<div class="flex items-center bg-slate-800/50 rounded-xl px-3 py-1.5 border border-slate-700/50 ml-4"><i class="fas fa-filter text-slate-500 mr-2 text-[10px]"></i><select onchange="changeNamespace(this.value)" class="bg-transparent text-white text-[10px] font-bold focus:outline-none cursor-pointer uppercase tracking-widest ns-list-selector"></select></div>` : ''}</div>${t !== 'nodes' && t !== 'events' ? `<button onclick="openCreateModal('${t}')" class="bg-gradient-to-r from-blue-600 to-blue-500 hover:shadow-lg hover:shadow-blue-900/40 text-white px-6 py-3 rounded-xl font-bold text-[10px] uppercase tracking-[0.2em] transition-all active:scale-95 flex items-center shadow-lg shadow-blue-900/20"><i class="fas fa-plus mr-2"></i> Criar ${t === 'ingresses' ? 'Ingress' : t.slice(0,-1)}</button>` : ''}</div>`;
+                if(!['nodes', 'namespaces'].includes(t)) { setTimeout(async () => { let opts = `<option value="all" ${selectedNamespace === 'all' ? 'selected' : ''}>TODOS OS NAMESPACES</option>`; try { const nsRes = await secureFetch(`${apiBase}/namespaces`); if(nsRes.ok) { const nsList = await nsRes.json(); opts += nsList.map(n => `<option value="${n.name}" ${n.name === selectedNamespace ? 'selected' : ''}>${n.name.toUpperCase()}</option>`).join(''); } } catch {} const selectors = document.querySelectorAll('.ns-list-selector'); selectors.forEach(s => s.innerHTML = opts); }, 0); }
+                if(!d.length) { const emptyH = h + `<div class="bg-card glass p-20 rounded-[2.5rem] border border-slate-700/50 text-center flex flex-col items-center slide-up"><div class="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-4"><i class="fas fa-inbox text-2xl text-slate-600"></i></div><p class="italic text-slate-500 tracking-widest uppercase text-[10px] font-bold">Nenhum recurso encontrado em ${selectedNamespace}</p></div>`; document.getElementById('mainContent').innerHTML = emptyH; viewCache[t] = emptyH; return; }
+                const keys = Object.keys(d[0]);
+                h += `<div class="bg-card glass rounded-[2rem] border border-slate-700/50 shadow-2xl overflow-hidden slide-up"><table class="w-full text-left"><thead class="bg-slate-800/50 text-[10px] uppercase font-bold text-slate-500 tracking-widest"><tr class="border-b border-slate-700/50"><th class="px-8 py-5">Recurso</th>${keys.filter(k => !['name','created','ip','namespace','endpoints'].includes(k)).map(k => `<th class="px-8 py-5">${k}</th>`).join('')}${t === 'services' ? '<th class="px-8 py-5">Endpoints</th>' : ''}${t !== 'nodes' && t !== 'events' ? '<th class="px-8 py-5 text-right">Ações</th>' : ''}</tr></thead><tbody class="divide-y divide-slate-700/30">`;
+                d.forEach(i => { h += `<tr class="hover:bg-slate-800/40 transition-colors group"><td class="px-8 py-5"><span class="font-bold text-white tracking-tight group-hover:text-blue-400 transition-colors">${i.name}</span>${i.namespace ? `<span class="block text-[10px] text-slate-500 font-normal uppercase mt-0.5 tracking-tighter">${i.namespace}</span>` : ''}</td>${keys.filter(k => !['name','created','ip','namespace','endpoints'].includes(k)).map(k => `<td class="px-8 py-5 text-slate-400 font-medium">${i[k] ?? '-'}</td>`).join('')}${t === 'services' ? `<td class="px-8 py-5"><span class="px-3 py-1 rounded-full text-[10px] font-bold ${i.endpoints > 0 ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}">${i.endpoints} Ativos</span></td>` : ''}${t !== 'nodes' && t !== 'events' ? `<td class="px-8 py-5 text-right"><div class="flex items-center justify-end space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">${t === 'pods' ? `<button onclick="viewPodLogs('${i.name}', '${i.namespace}')" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-blue-400 transition-all rounded-lg hover:bg-blue-400/10" title="Logs"><i class="fas fa-terminal text-xs"></i></button>` : ''}${t === 'deployments' ? `<button onclick="openScaleModal('${i.name}', '${i.namespace}', ${i.replicas})" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-amber-400 transition-all rounded-lg hover:bg-amber-400/10" title="Escalar"><i class="fas fa-arrows-alt-v text-xs"></i></button>` : ''}<button onclick="editYaml('${t}', '${i.name}', '${i.namespace || ''}')" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-indigo-400 transition-all rounded-lg hover:bg-indigo-400/10" title="YAML"><i class="fas fa-code text-xs"></i></button><button onclick="deleteResource('${t}', '${i.name}', '${i.namespace || ''}')" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-400 transition-all rounded-lg hover:bg-red-400/10" title="Eliminar"><i class="fas fa-trash-alt text-xs"></i></button></div></td>` : ''}</tr>`; });
+                const finalH = h + `</tbody></table></div>`; document.getElementById('mainContent').innerHTML = finalH; viewCache[t] = finalH;
+            } catch { const errH = '<p class="text-center text-red-500 font-bold py-20 uppercase tracking-widest text-[10px] slide-up">Falha na Ligação ao Cluster</p>'; document.getElementById('mainContent').innerHTML = errH; viewCache[t] = errH; }
+        }
+
+        async function openCreateModal(type, returnTo = null) {
+            const overlay = document.getElementById('modalOverlay'); const content = document.getElementById('modalContent'); overlay.classList.remove('hidden'); setTimeout(() => { overlay.classList.add('opacity-100'); content.classList.add('scale-100'); }, 10);
+            const displayTitles = { 'ingresses': 'Ingress', 'services': 'Service', 'pods': 'Pod', 'deployments': 'Deployment', 'namespaces': 'Namespace' };
+            document.getElementById('modalTitle').innerText = `Criar ${displayTitles[type] || type}`;
+            let form = ''; const nsRes = await secureFetch(`${apiBase}/namespaces`); const nsList = await nsRes.json();
+            const currentNsForCreate = selectedNamespace === 'all' ? 'default' : selectedNamespace;
+            const nsOptions = nsList.map(n => `<option value="${n.name}" ${n.name === currentNsForCreate ? 'selected' : ''}>${n.name.toUpperCase()}</option>`).join('');
+            const nsSelectorHtml = type === 'namespaces' ? '' : `<div class="mb-6"><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Namespace</label><div class="flex space-x-3"><select id="create_resource_ns" onchange="if(document.getElementById('ing_svc')) updateIngressServiceOptions(this.value)" class="flex-1 bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold">${nsOptions}</select><button onclick="closeModal(); setTimeout(() => openCreateModal('namespaces', '${type}'), 300)" class="w-12 bg-slate-800 border border-slate-700 rounded-xl text-blue-500 hover:bg-slate-700 transition" title="Novo Namespace"><i class="fas fa-plus"></i></button></div></div>`;
+            const imageDatalist = `<datalist id="imageSuggestions"><option value="nginx:alpine"><option value="alpine:latest"><option value="busybox:latest"><option value="redis:alpine"><option value="postgres:alpine"><option value="node:alpine"><option value="python:alpine"><option value="httpd:alpine"></datalist>`;
+            const imgPlaceholder = "Escolha ou digite uma imagem (ex: nginx:latest)";
+            if(type === 'namespaces') {
+                form = `<div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome</label><input type="text" id="ns_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div>`;
+                document.getElementById('modalConfirmBtn').onclick = () => submitCreate('namespaces', { name: document.getElementById('ns_name').value }, returnTo);
+            } else if(type === 'pods') {
+                form = `${nsSelectorHtml}${imageDatalist}<div class="space-y-6"><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome do Pod</label><input type="text" id="pod_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: web-server"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Porta Contentor</label><input type="number" id="pod_port" placeholder="ex: 80" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Imagem</label><input type="text" list="imageSuggestions" id="pod_image" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="${imgPlaceholder}"></div></div>`;
+                document.getElementById('modalConfirmBtn').onclick = () => submitCreate('pods', { namespace: document.getElementById('create_resource_ns').value, name: document.getElementById('pod_name').value, image: document.getElementById('pod_image').value, containerPort: document.getElementById('pod_port').value ? parseInt(document.getElementById('pod_port').value) : null });
+            } else if(type === 'deployments') {
+                form = `${nsSelectorHtml}${imageDatalist}<div class="space-y-6"><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome</label><input type="text" id="dep_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: api-deployment"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Réplicas</label><input type="number" id="dep_replicas" value="1" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Imagem</label><input type="text" list="imageSuggestions" id="dep_image" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="${imgPlaceholder}"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Porta Contentor</label><input type="number" id="dep_port" placeholder="ex: 80" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Limite CPU</label><input type="text" id="dep_cpu" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="250m"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Limite RAM</label><input type="text" id="dep_mem" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="128Mi"></div></div><div><div class="flex justify-between items-center mb-2 ml-1"><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Variáveis de Ambiente</label><button onclick="addEnvRow()" class="text-blue-500 hover:text-blue-400 text-[10px] font-bold uppercase tracking-widest"><i class="fas fa-plus-circle mr-1"></i> Adicionar</button></div><div id="envContainer" class="max-h-32 overflow-y-auto pr-2"></div></div></div>`;
+                document.getElementById('modalConfirmBtn').onclick = () => { const envVars = {}; document.querySelectorAll('#envContainer > div').forEach(row => { const k = row.querySelector('.env-key').value.trim(); const v = row.querySelector('.env-val').value.trim(); if(k) envVars[k] = v; }); submitCreate('deployments', { namespace: document.getElementById('create_resource_ns').value, name: document.getElementById('dep_name').value, image: document.getElementById('dep_image').value, replicas: parseInt(document.getElementById('dep_replicas').value), containerPort: document.getElementById('dep_port').value ? parseInt(document.getElementById('dep_port').value) : null, cpuLimit: document.getElementById('dep_cpu').value, memLimit: document.getElementById('dep_mem').value, envVars: envVars }); };
+            } else if(type === 'services') {
+                form = `${nsSelectorHtml}<div class="space-y-6"><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome do Serviço</label><input type="text" id="svc_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: web-service"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Seletor (app label)</label><input type="text" id="svc_label" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: nginx"></div></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Tipo de Serviço</label><select id="svc_type" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold"><option>ClusterIP</option><option>NodePort</option><option>LoadBalancer</option></select></div><div><div class="flex justify-between items-center mb-2 ml-1"><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mapeamento de Portas</label><button onclick="addPortRow()" class="text-blue-500 hover:text-blue-400 text-[10px] font-bold uppercase tracking-widest"><i class="fas fa-plus-circle mr-1"></i> Adicionar Porto</button></div><div id="portsContainer" class="max-h-40 overflow-y-auto pr-2"><div class="grid grid-cols-12 gap-3 items-end mb-3"><div class="col-span-4"><label class="block text-[8px] font-bold text-slate-600 uppercase mb-1 ml-1">Porta (Svc)</label><input type="number" class="svc-port w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-xs" value="80"></div><div class="col-span-4"><label class="block text-[8px] font-bold text-slate-600 uppercase mb-1 ml-1">Target (Pod)</label><input type="number" class="svc-tport w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-xs" value="80"></div><div class="col-span-3"><label class="block text-[8px] font-bold text-slate-600 uppercase mb-1 ml-1">Proto</label><select class="svc-proto w-full bg-slate-900/50 border border-slate-700 rounded-xl px-2 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-[10px] font-bold"><option>TCP</option><option>UDP</option></select></div><div class="col-span-1"></div></div></div></div></div>`;
+                document.getElementById('modalConfirmBtn').onclick = () => { const ports = []; document.querySelectorAll('#portsContainer > div').forEach(row => { const p = row.querySelector('.svc-port').value; const tp = row.querySelector('.svc-tport').value; const proto = row.querySelector('.svc-proto').value; if(p && tp) ports.push({ port: parseInt(p), targetPort: parseInt(tp), protocol: proto }); }); submitCreate('services', { namespace: document.getElementById('create_resource_ns').value, name: document.getElementById('svc_name').value, appLabel: document.getElementById('svc_label').value, ports: ports, type: document.getElementById('svc_type').value }); };
+            } else if(type === 'ingresses') {
+                form = `${nsSelectorHtml}<div class="space-y-6"><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome do Ingress</label><input type="text" id="ing_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: web-ingress"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Host (DNS)</label><input type="text" id="ing_host" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="myapp.local"></div></div><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Caminho (Path)</label><input type="text" id="ing_path" value="/" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Tipo de Caminho</label><select id="ing_pathtype" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold"><option>Prefix</option><option>Exact</option><option>ImplementationSpecific</option></select></div></div><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Serviço Alvo</label><select id="ing_svc" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold"><option value="">A carregar serviços...</option></select></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Porta do Serviço</label><input type="number" id="ing_port" value="80" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">TLS Secret (Opcional)</label><input type="text" id="ing_tls" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: my-tls-secret"></div></div>`;
+                document.getElementById('modalConfirmBtn').onclick = () => submitCreate('ingresses', { namespace: document.getElementById('create_resource_ns').value, name: document.getElementById('ing_name').value, host: document.getElementById('ing_host').value, path: document.getElementById('ing_path').value, pathType: document.getElementById('ing_pathtype').value, serviceName: document.getElementById('ing_svc').value, port: parseInt(document.getElementById('ing_port').value), tlsSecret: document.getElementById('ing_tls').value || null });
+                updateIngressServiceOptions(currentNsForCreate);
             }
+            document.getElementById('modalBody').innerHTML = form; 
+            if(type === 'ingresses') updateIngressServiceOptions(currentNsForCreate);
+            document.getElementById('modalConfirmBtn').innerText = 'CRIAR'; validateCreateForm();
+        }
 
-            if(resourceType === 'services') {
-                payload.appLabel = name;
-                payload.type = document.getElementById('createServiceType').value;
-                payload.port = parseInt(document.getElementById('createServicePort').value);
-                payload.targetPort = parseInt(document.getElementById('createServiceTargetPort').value);
-            }
-
-            if(resourceType === 'ingresses') {
-                payload.host = document.getElementById('createIngressHost').value;
-                payload.serviceName = document.getElementById('createIngressSvc').value;
-                payload.port = parseInt(document.getElementById('createIngressPort').value);
-                if(!payload.serviceName) return showToast("Indique o nome do serviço", "error");
-            }
-
+        async function submitCreate(type, data, returnTo = null) {
+            const btn = document.getElementById('modalConfirmBtn'); btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> CRIANDO';
+            if(data.name) data.name = data.name.toLowerCase();
             try {
-                const res = await fetch(`${apiBase}/${resourceType}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if(res.ok) {
-                    showToast(`${name} criado com sucesso!`, "success");
-                    loadCurrentView();
-                    if(resourceType === 'namespaces') loadNamespaceOptions();
-                } else {
-                    showToast(`Falha a criar.`, "error");
-                }
-            } catch (err) { showToast("Erro de rede.", "error"); }
+                const res = await secureFetch(`${apiBase}/${type}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+                if(res.ok) { showToast(`${type === 'ingresses' ? 'Ingress' : type.slice(0,-1)} criado`, "success"); closeModal(); if(type === 'namespaces') await loadNamespaceOptions(); if(returnTo) setTimeout(() => openCreateModal(returnTo), 500); else loadCurrentView(true); }
+                else { const err = await res.json().catch(() => ({})); showToast(err.message || "Erro ao criar recurso", "error"); }
+            } catch (e) { showToast("Erro de rede ao criar", "error"); }
+            finally { btn.disabled = false; btn.innerText = 'CRIAR'; validateCreateForm(); }
         }
 
-        async function deleteResource(resource, name) {
-            if(!confirm(`⚠️ Atenção: Vai apagar permanentemente '${name}'. Deseja continuar?`)) return;
+        async function viewPodLogs(name, ns) { try { const res = await secureFetch(`${apiBase}/pods/${name}/logs?ns=${ns}`); const d = await res.json(); openLogModal(name, d.logs); } catch { showToast("Erro ao ler logs", "error"); } }
+        function openLogModal(name, logs) { const overlay = document.getElementById('modalOverlay'); overlay.classList.remove('hidden'); setTimeout(() => overlay.classList.add('opacity-100'), 10); document.getElementById('modalTitle').innerText = `Logs: ${name}`; document.getElementById('modalBody').innerHTML = `<pre class="bg-slate-950 p-6 rounded-2xl text-green-500 font-mono text-[10px] overflow-auto max-h-[60vh] border border-slate-800 shadow-inner selection:bg-green-500/20">${logs}</pre>`; document.getElementById('modalConfirmBtn').classList.add('hidden'); }
+
+        function openScaleModal(name, ns, current) {
+            const overlay = document.getElementById('modalOverlay'); overlay.classList.remove('hidden'); setTimeout(() => overlay.classList.add('opacity-100'), 10); document.getElementById('modalTitle').innerText = `Escalar: ${name}`; document.getElementById('modalBody').innerHTML = `<div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Número de Replicas</label><input type="number" id="scale_val" value="${current}" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div>`;
+            const btn = document.getElementById('modalConfirmBtn'); btn.classList.remove('hidden'); btn.innerText = 'ESCALAR';
+            btn.onclick = async () => { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> ESCALANDO'; try { const res = await secureFetch(`${apiBase}/deployments/scale`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ namespace: ns, name: name, replicas: parseInt(document.getElementById('scale_val').value) }) }); if(res.ok) { showToast("Deployment escalado", "success"); closeModal(); loadCurrentView(true); } } finally { btn.disabled = false; btn.innerText = 'ESCALAR'; } };
+        }
+
+        async function deleteResource(type, name, ns) {
+            if(!confirm(`Tem a certeza que deseja eliminar ${type.slice(0,-1)} '${name}'?`)) return;
             try {
-                let url = `${apiBase}/${resource}/${name}`;
-                if(!['namespaces', 'nodes'].includes(resource)) {
-                    url += `?ns=${selectedNamespace}`;
-                }
-
-                const res = await fetch(url, { method: 'DELETE' });
-                if(res.ok) {
-                    showToast(`${name} apagado.`, "success");
-                    if(resource === 'namespaces') loadNamespaceOptions();
-                    setTimeout(loadCurrentView, 500);
-                } else { showToast(`Falha ao apagar.`, "error"); }
-            } catch (err) { showToast("Erro de rede.", "error"); }
+                let url = `${apiBase}/${type}/${name}`; if(ns) url += `?ns=${ns}`;
+                const res = await secureFetch(url, { method: 'DELETE' });
+                if(res.ok) { showToast(`${type.slice(0,-1).toUpperCase()} eliminado`, "success"); loadCurrentView(true); }
+                else { const d = await res.json().catch(() => ({})); showToast(d.message || "Erro ao eliminar", "error"); }
+            } catch { showToast("Erro de ligação", "error"); }
         }
 
-        async function scaleDeployment(name, replicas) {
-            if(replicas < 0) return;
+        async function editYaml(type, name, ns) {
+            const overlay = document.getElementById('modalOverlay'); overlay.classList.remove('hidden'); setTimeout(() => overlay.classList.add('opacity-100'), 10);
+            document.getElementById('modalTitle').innerText = `Editar YAML: ${name}`;
+            document.getElementById('modalBody').innerHTML = `<div id="yamlEditor" class="h-80 w-full rounded-xl border border-slate-700 overflow-hidden"></div>`;
+            const editor = ace.edit("yamlEditor"); editor.setTheme("ace/theme/monokai"); editor.session.setMode("ace/mode/yaml"); editor.setOptions({ fontSize: "12px" });
             try {
-                const res = await fetch(`${apiBase}/deployments/scale`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ namespace: selectedNamespace, name: name, replicas: replicas })
-                });
-                if(res.ok) {
-                    showToast(`Escalando ${name} para ${replicas} réplicas...`, "success");
-                    setTimeout(loadCurrentView, 1000);
-                }
-            } catch (err) { showToast("Erro ao escalar.", "error"); }
+                let url = `${apiBase}/yaml/${type}/${name}`; if(ns) url += `?ns=${ns}`;
+                const res = await secureFetch(url); const d = await res.json(); editor.setValue(d.yaml, -1);
+            } catch { showToast("Erro ao carregar YAML", "error"); }
+            const btn = document.getElementById('modalConfirmBtn'); btn.innerText = 'GUARDAR';
+            btn.onclick = async () => {
+                btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> GUARDANDO';
+                try {
+                    let url = `${apiBase}/yaml/${type}/${name}`; if(ns) url += `?ns=${ns}`;
+                    const res = await secureFetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ yaml: editor.getValue() }) });
+                    if(res.ok) { showToast("YAML atualizado", "success"); closeModal(); loadCurrentView(true); }
+                    else { const err = await res.json().catch(() => ({})); showToast(err.message || "Erro ao validar YAML", "error"); }
+                } catch { showToast("Erro ao guardar", "error"); }
+                finally { btn.disabled = false; btn.innerText = 'GUARDAR'; }
+            };
         }
 
-        async function viewLogs(podName) {
-            document.getElementById('logModal').classList.remove('hidden');
-            document.getElementById('logModalTitle').innerText = podName;
-            document.getElementById('logContent').innerHTML = "A carregar logs...";
-            
-            try {
-                const res = await fetch(`${apiBase}/pods/${podName}/logs?ns=${selectedNamespace}`);
-                const data = await res.json();
-                document.getElementById('logContent').innerText = data.logs;
-            } catch (err) {
-                document.getElementById('logContent').innerText = "Erro ao carregar logs.";
-            }
-        }
-
-        function closeLogModal() {
-            document.getElementById('logModal').classList.add('hidden');
-        }
-
-        function showToast(msg, type="info") {
-            const toast = document.createElement('div');
-            const colorClass = type === 'error' ? 'bg-red-500' : (type === 'success' ? 'bg-green-500' : 'bg-blue-500');
-            const icon = type === 'error' ? 'fa-exclamation-triangle' : (type === 'success' ? 'fa-check-circle' : 'fa-info-circle');
-            toast.className = `${colorClass} text-white px-4 py-3 rounded shadow-lg flex items-center space-x-3 fade-in w-72`;
-            toast.innerHTML = `<i class="fas ${icon}"></i> <span>${msg}</span>`;
-            document.getElementById('toastArea').appendChild(toast);
-            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 3000);
-        }
-
-        window.onload = () => loadDashboardData();
+        function closeModal() { const overlay = document.getElementById('modalOverlay'); overlay.classList.remove('opacity-100'); document.getElementById('modalContent').classList.remove('scale-100'); setTimeout(() => { overlay.classList.add('hidden'); document.getElementById('modalConfirmBtn').classList.remove('hidden'); }, 300); }
+        async function loadEventsData() { try { const res = await secureFetch(`${apiBase}/events?ns=${selectedNamespace}`); const d = await res.json(); let h = `<div class="space-y-4 slide-up">`; d.forEach(e => { h += `<div class="bg-card glass p-6 rounded-[1.5rem] border-l-4 ${e.type==='Warning'?'border-amber-500 bg-amber-500/5':'border-blue-500 bg-blue-500/5'} border-slate-700/50 flex justify-between items-center shadow-lg transition-all hover:scale-[1.01]"><div><p class="text-white font-black text-xs uppercase tracking-tight">${e.reason} <span class="text-slate-500 font-bold ml-2 opacity-50">/ ${e.source}</span></p><p class="text-slate-400 mt-2 text-sm leading-relaxed">${e.message}</p></div><span class="text-[10px] font-bold text-slate-600 bg-slate-950/50 px-3 py-1 rounded-full border border-slate-800">${new Date(e.lastSeen).toLocaleTimeString()}</span></div>`; }); document.getElementById('mainContent').innerHTML = h + `</div>`; viewCache['events'] = h + `</div>`; } catch { showToast("Falha ao ler eventos", "error"); } }
+        async function loadNamespaceOptions() { let options = `<option value="all" ${selectedNamespace === 'all' ? 'selected' : ''}>TODOS OS NAMESPACES</option>`; try { const res = await secureFetch(`${apiBase}/namespaces`); if(res.ok) { const ns = await res.json(); options += ns.map(n => `<option value="${n.name}" ${n.name === selectedNamespace ? 'selected' : ''}>${n.name.toUpperCase()}</option>`).join(''); } } catch {} document.getElementById('globalNamespaceSelector').innerHTML = options; }
+        function updateHeaderClusterStatus() { const b = document.getElementById('headerClusterBadge'); const t = document.getElementById('headerClusterText'); if(activeCluster) { b.className = "w-2 h-2 rounded-full bg-blue-500 mr-3 animate-pulse"; t.innerText = activeCluster; } else { b.className = "w-2 h-2 rounded-full bg-slate-500 mr-3"; t.innerText = "Nenhum Cluster"; } }
+        function loadCurrentView(skipCache = false) { loadView(currentView, null, skipCache); }
+        function refreshCurrentView() { loadView(currentView, null, true); }
+        function changeNamespace(n) { selectedNamespace = n; loadCurrentView(true); }
+        function showToast(m, t) { const a = document.getElementById('toastArea'); const d = document.createElement('div'); d.className = `${t==='error'?'bg-red-500 shadow-red-900/30':'bg-blue-600 shadow-blue-900/30'} text-white px-8 py-4 rounded-2xl shadow-2xl fade-in flex items-center space-x-3 border border-white/10`; d.innerHTML = `<i class="fas ${t==='error'?'fa-exclamation-circle':'fa-info-circle'} text-lg"></i><span class="font-bold text-[10px] uppercase tracking-[0.2em]">${m}</span>`; a.appendChild(d); setTimeout(() => { d.style.opacity = '0'; d.style.transform = 'translateX(20px)'; setTimeout(() => d.remove(), 500); }, 3000); }
+        window.onload = () => { updateHeaderClusterStatus(); updateProxmoxButtonState(); loadView('dashboard', null); };
     </script>
 </body>
 </html>

@@ -11,6 +11,6 @@ public class EventsController : ControllerBase
     public EventsController(KubernetesService svc) => _svc = svc;
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromQuery] string ns = "default")
+    public async Task<IActionResult> Get([FromQuery] string? ns = null)
         => Ok(await _svc.GetEventsAsync(ns));
 }

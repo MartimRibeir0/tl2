@@ -8,34 +8,57 @@ public class ProxmoxService
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _config;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public ProxmoxService(HttpClient httpClient, IConfiguration config)
+    public ProxmoxService(HttpClient httpClient, IConfiguration config, IHttpContextAccessor httpContextAccessor)
     {
         _httpClient = httpClient;
         _config = config;
+        _httpContextAccessor = httpContextAccessor;
+        _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    }
 
-        var baseUrl = _config["Proxmox:BaseUrl"];
-        var tokenId = _config["Proxmox:TokenId"];
-        var secret = _config["Proxmox:Secret"];
+    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object? body = null, Dictionary<string, string>? query = null)
+    {
+        var context = _httpContextAccessor.HttpContext;
+        if (context == null) throw new Exception("Contexto HTTP não encontrado");
 
-        if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(tokenId) || string.IsNullOrEmpty(secret))
+        var ticket = context.Request.Headers["X-PVE-Ticket"].ToString();
+        var csrf = context.Request.Headers["X-PVE-CSRF"].ToString();
+        var pveUrl = context.Request.Headers["X-PVE-Url"].ToString();
+
+        if (string.IsNullOrEmpty(pveUrl)) throw new Exception("URL do Proxmox não fornecida");
+
+        var baseUrl = pveUrl.EndsWith("/") ? pveUrl : pveUrl + "/";
+        if (!baseUrl.EndsWith("api2/json/")) baseUrl += "api2/json/";
+
+        var fullUrl = baseUrl + path;
+        if (query != null)
         {
-            throw new Exception("Proxmox configuration is missing in appsettings.json");
+            var q = string.Join("&", query.Select(kvp => $"{kvp.Key}={Uri.EscapeDataString(kvp.Value)}"));
+            fullUrl += (fullUrl.Contains("?") ? "&" : "?") + q;
         }
 
-        _httpClient.BaseAddress = new Uri(baseUrl);
+        var request = new HttpRequestMessage(method, fullUrl);
         
-        // Formato do Token: PVEAPIToken=USER@REALM!TOKENID=UUID
-        // Usamos TryAddWithoutValidation porque o formato do Proxmox não segue o padrão "Scheme Parameter" do .NET
-        _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"PVEAPIToken={tokenId}={secret}");
-        
-        // Ignorar erros de SSL se o Proxmox usar certificado self-signed (comum em labs)
-        // Nota: Em produção, isto deve ser tratado corretamente.
+        if (!string.IsNullOrEmpty(ticket))
+            request.Headers.Add("Cookie", $"PVEAuthCookie={ticket}");
+
+        if (!string.IsNullOrEmpty(csrf))
+            request.Headers.Add("CSRFPreventionToken", csrf);
+
+        if (body != null)
+        {
+            if (body is HttpContent content) request.Content = content;
+            else request.Content = new StringContent(JsonSerializer.Serialize(body), System.Text.Encoding.UTF8, "application/json");
+        }
+
+        return await _httpClient.SendAsync(request);
     }
 
     public async Task<IEnumerable<VirtualMachineDto>> GetVmsAsync()
     {
-        var response = await _httpClient.GetAsync("cluster/resources?type=vm");
+        var response = await SendAsync(HttpMethod.Get, "cluster/resources", query: new Dictionary<string, string> { { "type", "vm" } });
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync();
@@ -50,13 +73,12 @@ public class ProxmoxService
             vm.TryGetProperty("cpu", out var cpu) ? cpu.GetDouble() : 0,
             vm.TryGetProperty("mem", out var mem) ? mem.GetInt64() : 0,
             vm.TryGetProperty("uptime", out var uptime) ? uptime.GetInt64() : 0
-        )).ToList(); // Materializar os dados antes de fechar o JsonDocument
+        )).ToList();
     }
 
     public async Task<bool> PerformVmActionAsync(string node, int vmid, string action)
     {
-        // Actions: start, stop, shutdown, reboot, pause, resume
-        var response = await _httpClient.PostAsync($"nodes/{node}/qemu/{vmid}/status/{action}", null);
+        var response = await SendAsync(HttpMethod.Post, $"nodes/{node}/qemu/{vmid}/status/{action}");
         return response.IsSuccessStatusCode;
     }
 
@@ -70,13 +92,13 @@ public class ProxmoxService
             { "full", dto.Full ? "1" : "0" }
         });
 
-        var response = await _httpClient.PostAsync($"nodes/{node}/qemu/{vmid}/clone", content);
+        var response = await SendAsync(HttpMethod.Post, $"nodes/{node}/qemu/{vmid}/clone", content);
         return response.IsSuccessStatusCode;
     }
 
     public async Task<bool> DeleteVmAsync(string node, int vmid)
     {
-        var response = await _httpClient.DeleteAsync($"nodes/{node}/qemu/{vmid}");
+        var response = await SendAsync(HttpMethod.Delete, $"nodes/{node}/qemu/{vmid}");
         return response.IsSuccessStatusCode;
     }
 }

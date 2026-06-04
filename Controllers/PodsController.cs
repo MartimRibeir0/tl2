@@ -12,14 +12,21 @@ public class PodsController : ControllerBase
     public PodsController(KubernetesService svc) => _svc = svc;
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromQuery] string ns = "default")
+    public async Task<IActionResult> Get([FromQuery] string? ns = null)
         => Ok(await _svc.GetPodsAsync(ns));
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreatePodDto dto)
     {
-        await _svc.CreatePodAsync(dto.Namespace, dto.Name, dto.Image);
-        return Ok();
+        try 
+        {
+            await _svc.CreatePodAsync(dto.Namespace, dto.Name, dto.Image, dto.ContainerPort);
+            return Ok(new { message = "Pod criado com sucesso" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = $"Falha ao criar pod: {ex.Message}" });
+        }
     }
 
     [HttpDelete("{name}")]
