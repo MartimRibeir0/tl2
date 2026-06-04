@@ -262,7 +262,7 @@
         async function loadClustersList() {
             try {
                 const res = await secureFetch(`${apiBase}/config/clusters`); const clusters = await res.json();
-                const h = `<div class="grid grid-cols-1 lg:grid-cols-2 gap-10 slide-up"><div class="bg-card p-8 rounded-[2rem] border border-slate-700/50 shadow-xl"><h4 class="text-white font-bold mb-6 text-[10px] uppercase tracking-[0.2em] flex items-center"><i class="fas fa-plus-circle mr-3 text-blue-500"></i> Configurar Novo Cluster</h4><div class="space-y-4"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Identificador</label><input type="text" id="newClusterName" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="ex: MicroK8s-Lab"></div><div class="grid grid-cols-2 gap-4"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Importar de IP</label><input type="text" id="fetchIp" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="192.168.1.100"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Porto / Ficheiro</label><div class="flex space-x-2"><input type="number" id="fetchPort" value="8080" class="w-20 bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"><button onclick="fetchYamlFromUrl(this)" class="flex-1 bg-slate-700 hover:bg-blue-600 text-white rounded-xl transition flex items-center justify-center" title="Importar de URL"><i class="fas fa-download mr-2 text-xs"></i> <span class="text-[10px] font-bold">URL</span></button><input type="file" id="yamlFileInput" accept=".yaml,.yml" class="hidden" onchange="importYamlFile(this)"><button onclick="document.getElementById('yamlFileInput').click()" class="flex-1 bg-slate-700 hover:bg-indigo-600 text-white rounded-xl transition flex items-center justify-center" title="Importar Ficheiro Local"><i class="fas fa-file-import mr-2 text-xs"></i> <span class="text-[10px] font-bold">ARQUIVO</span></button></div></div></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Kubeconfig YAML</label><textarea id="newClusterYaml" rows="8" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="Cole o output do comando 'microk8s config' ou use a opção de importar"></textarea></div><button onclick="saveNewCluster()" class="w-full bg-blue-600 py-4 rounded-xl font-bold mt-2 hover:bg-blue-500 shadow-lg shadow-blue-900/30 transition-all active:scale-95 text-white tracking-widest text-xs uppercase">GUARDAR CLUSTER</button></div></div><div class="bg-card p-8 rounded-[2rem] border border-slate-700/50 shadow-xl flex flex-col"><h4 class="text-white font-bold mb-6 text-[10px] uppercase tracking-[0.2em] flex items-center"><i class="fas fa-list mr-3 text-blue-500"></i> Clusters Registados</h4><div class="space-y-3 flex-1">${clusters.length === 0 ? '<p class="text-slate-600 text-center py-20 italic">Nenhum cluster configurado.</p>' : ''}${clusters.map(n => `<div class="flex justify-between items-center p-5 bg-slate-900/30 rounded-2xl border ${n === activeCluster ? 'border-blue-500 bg-blue-500/5' : 'border-slate-700/50'} hover:border-slate-500 transition-all group"><div class="flex items-center"><i class="fas fa-dharmachakra mr-4 ${n === activeCluster ? 'text-blue-500' : 'text-slate-600 group-hover:text-slate-400'} transition"></i><span class="font-bold text-white tracking-tight">${n}</span></div><div class="flex items-center space-x-2"><button onclick="switchCluster('${n}')" class="px-5 py-2 rounded-xl text-[10px] font-bold tracking-widest ${n === activeCluster ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white'} transition-all active:scale-95">${n === activeCluster ? 'ATIVO' : 'LIGAR'}</button><button onclick="deleteCluster('${n}')" class="w-10 h-10 flex items-center justify-center text-slate-600 hover:text-red-500 transition-colors"><i class="fas fa-trash-alt"></i></button></div></div>`).join('')}</div></div></div>`;
+                const h = `<div class="grid grid-cols-1 lg:grid-cols-2 gap-10 slide-up"><div class="bg-card p-8 rounded-[2rem] border border-slate-700/50 shadow-xl"><div class="flex justify-between items-center mb-6"><h4 class="text-white font-bold text-[10px] uppercase tracking-[0.2em] flex items-center"><i class="fas fa-plus-circle mr-3 text-blue-500"></i> Configurar Novo Cluster</h4><button onclick="openScriptModal()" class="bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest border border-blue-500/20 transition-all"><i class="fas fa-terminal mr-1.5"></i> SCRIPT SERVIDOR</button></div><div class="space-y-4"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Identificador</label><input type="text" id="newClusterName" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="ex: MicroK8s-Lab"></div><div class="grid grid-cols-2 gap-4"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Importar de IP</label><input type="text" id="fetchIp" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="192.168.1.100"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Porto / Ficheiro</label><div class="flex space-x-2"><input type="number" id="fetchPort" value="8080" class="w-20 bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"><button onclick="fetchYamlFromUrl(this)" class="flex-1 bg-slate-700 hover:bg-blue-600 text-white rounded-xl transition flex items-center justify-center" title="Importar de URL"><i class="fas fa-download mr-2 text-xs"></i> <span class="text-[10px] font-bold">URL</span></button><input type="file" id="yamlFileInput" accept=".yaml,.yml" class="hidden" onchange="importYamlFile(this)"><button onclick="document.getElementById('yamlFileInput').click()" class="flex-1 bg-slate-700 hover:bg-indigo-600 text-white rounded-xl transition flex items-center justify-center" title="Importar Ficheiro Local"><i class="fas fa-file-import mr-2 text-xs"></i> <span class="text-[10px] font-bold">ARQUIVO</span></button></div></div></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Kubeconfig YAML</label><textarea id="newClusterYaml" rows="8" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="Cole o output do comando 'microk8s config' ou use a opção de importar"></textarea></div><button onclick="saveNewCluster()" class="w-full bg-blue-600 py-4 rounded-xl font-bold mt-2 hover:bg-blue-500 shadow-lg shadow-blue-900/30 transition-all active:scale-95 text-white tracking-widest text-xs uppercase">GUARDAR CLUSTER</button></div></div><div class="bg-card p-8 rounded-[2rem] border border-slate-700/50 shadow-xl flex flex-col"><h4 class="text-white font-bold mb-6 text-[10px] uppercase tracking-[0.2em] flex items-center"><i class="fas fa-list mr-3 text-blue-500"></i> Clusters Registados</h4><div class="space-y-3 flex-1">${clusters.length === 0 ? '<p class="text-slate-600 text-center py-20 italic">Nenhum cluster configurado.</p>' : ''}${clusters.map(n => `<div class="flex justify-between items-center p-5 bg-slate-900/30 rounded-2xl border ${n === activeCluster ? 'border-blue-500 bg-blue-500/5' : 'border-slate-700/50'} hover:border-slate-500 transition-all group"><div class="flex items-center"><i class="fas fa-dharmachakra mr-4 ${n === activeCluster ? 'text-blue-500' : 'text-slate-600 group-hover:text-slate-400'} transition"></i><span class="font-bold text-white tracking-tight">${n}</span></div><div class="flex items-center space-x-2"><button onclick="switchCluster('${n}')" class="px-5 py-2 rounded-xl text-[10px] font-bold tracking-widest ${n === activeCluster ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white'} transition-all active:scale-95">${n === activeCluster ? 'ATIVO' : 'LIGAR'}</button><button onclick="deleteCluster('${n}')" class="w-10 h-10 flex items-center justify-center text-slate-600 hover:text-red-500 transition-colors"><i class="fas fa-trash-alt"></i></button></div></div>`).join('')}</div></div></div>`;
                 document.getElementById('mainContent').innerHTML = h; viewCache['clusters'] = h;
             } catch { showToast("Falha ao ler clusters", "error"); }
         }
@@ -298,6 +298,111 @@
 
         function switchCluster(n) { activeCluster = n; sessionStorage.setItem('active_cluster', n); updateHeaderClusterStatus(); viewCache = {}; loadView(currentView, null, true); }
         async function deleteCluster(n) { if(!confirm(`Apagar cluster '${n}'?`)) return; await secureFetch(`${apiBase}/config/clusters/${n}`, { method: 'DELETE' }); if(activeCluster === n) { activeCluster = ''; sessionStorage.removeItem('active_cluster'); updateHeaderClusterStatus(); } loadClustersList(); }
+
+        function openScriptModal() {
+            const overlay = document.getElementById('modalOverlay'); const content = document.getElementById('modalContent'); overlay.classList.remove('hidden'); setTimeout(() => { overlay.classList.add('opacity-100'); content.classList.add('scale-100'); }, 10);
+            document.getElementById('modalTitle').innerText = "Configuração do Servidor Remoto";
+            const scriptContent = `#!/bin/bash
+
+# --- CONFIGURAÇÃO DE CAMINHOS DINÂMICOS ---
+USER_ATUAL=$(whoami)
+PASTA_DESTINO="/home/\${USER_ATUAL}/microk8s-api"
+SCRIPT_PYTHON="\${PASTA_DESTINO}/script.py"
+NOME_SERVICO="microk8s-api"
+FICHEIRO_SERVICO="/etc/systemd/system/\${NOME_SERVICO}.service"
+
+echo "=== A iniciar a configuração automática total (Utilizador: \${USER_ATUAL}) ==="
+
+# 1. Criar a pasta para o script, se não existir
+echo "⏳ A criar a pasta \${PASTA_DESTINO}..."
+mkdir -p "\$PASTA_DESTINO"
+
+# 2. Criar o ficheiro Python com o teu código completo
+echo "⏳ A criar o ficheiro Python em \${SCRIPT_PYTHON}..."
+cat << 'EOF' > "\$SCRIPT_PYTHON"
+import subprocess
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+PORT = 8080
+
+class ConfigHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        try:
+            # Executa o comando e captura a saída textualmente
+            output = subprocess.check_output(["microk8s", "config"], text=True)
+
+            # Responde com sucesso (HTTP 200)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(output.encode("utf-8"))
+        except Exception as e:
+            # Caso haja algum erro ao executar o comando
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(f"Erro ao obter configuracao: {e}".encode("utf-8"))
+
+if __name__ == "__main__":
+    server = HTTPServer(("0.0.0.0", PORT), ConfigHandler)
+    print(f"Servidor ativo na porta {PORT}... Aguardando pedidos GET.")
+    server.serve_forever()
+EOF
+
+# Garantir que o utilizador atual é o dono da pasta e do ficheiro .py
+chown -R \${USER_ATUAL}:\${USER_ATUAL} "\$PASTA_DESTINO"
+
+# 3. Criar o ficheiro de serviço para o systemd (corre como root para o microk8s não dar erro de permissão)
+echo "⏳ A configurar o serviço de sistema em \${FICHEIRO_SERVICO}..."
+sudo bash -c "cat << EOF > \$FICHEIRO_SERVICO
+[Unit]
+Description=Servidor HTTP para MicroK8s Config
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 \$SCRIPT_PYTHON
+Restart=on-failure
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
+# 4. Recarregar o sistema e ativar o serviço para o arranque automático
+echo "⏳ A ativar e a iniciar o serviço no sistema..."
+sudo systemctl daemon-reload
+sudo systemctl enable "\${NOME_SERVICO}.service"
+sudo systemctl start "\${NOME_SERVICO}.service"
+
+# 5. Validação final
+echo "------------------------------------------------"
+if systemctl is-active --quiet "\${NOME_SERVICO}.service"; then
+    echo "✅ ESPETÁCULO! Servidor ativo no porto 8080."
+    echo "Agora use o IP desta máquina no KubeManager."
+else
+    echo "❌ Falha ao iniciar o serviço."
+fi
+echo "------------------------------------------------"`;
+
+            document.getElementById('modalBody').innerHTML = `<p class="text-slate-400 text-xs mb-4">Execute este script no seu nó **Master** (onde o MicroK8s está instalado) para permitir a importação remota do YAML:</p><div class="relative group"><pre id="serverScriptArea" class="bg-slate-950 p-4 rounded-xl text-blue-400 font-mono text-[9px] overflow-auto max-h-[40vh] border border-slate-800 shadow-inner">${scriptContent}</pre><button onclick="downloadScript('serverScriptArea')" class="absolute top-3 right-3 bg-slate-800 hover:bg-blue-600 text-white p-2 rounded-lg transition-all border border-slate-700 shadow-xl opacity-0 group-hover:opacity-100" title="Descarregar .sh"><i class="fas fa-file-download"></i></button></div>`;
+            const btn = document.getElementById('modalConfirmBtn'); btn.innerText = "DESCARREGAR .SH";
+            btn.onclick = () => { downloadScript('serverScriptArea'); };
+        }
+
+        function downloadScript(id) {
+            const text = document.getElementById(id).innerText;
+            const blob = new Blob([text], { type: 'text/x-sh' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'setup-microk8s-api.sh';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            showToast("Script descarregado com sucesso", "success");
+        }
 
         async function loadDashboardData() {
             try {
@@ -444,7 +549,22 @@
         }
 
         function closeModal() { const overlay = document.getElementById('modalOverlay'); overlay.classList.remove('opacity-100'); document.getElementById('modalContent').classList.remove('scale-100'); setTimeout(() => { overlay.classList.add('hidden'); document.getElementById('modalConfirmBtn').classList.remove('hidden'); }, 300); }
-        async function loadEventsData() { try { const res = await secureFetch(`${apiBase}/events?ns=${selectedNamespace}`); const d = await res.json(); let h = `<div class="space-y-4 slide-up">`; d.forEach(e => { h += `<div class="bg-card glass p-6 rounded-[1.5rem] border-l-4 ${e.type==='Warning'?'border-amber-500 bg-amber-500/5':'border-blue-500 bg-blue-500/5'} border-slate-700/50 flex justify-between items-center shadow-lg transition-all hover:scale-[1.01]"><div><p class="text-white font-black text-xs uppercase tracking-tight">${e.reason} <span class="text-slate-500 font-bold ml-2 opacity-50">/ ${e.source}</span></p><p class="text-slate-400 mt-2 text-sm leading-relaxed">${e.message}</p></div><span class="text-[10px] font-bold text-slate-600 bg-slate-950/50 px-3 py-1 rounded-full border border-slate-800">${new Date(e.lastSeen).toLocaleTimeString()}</span></div>`; }); document.getElementById('mainContent').innerHTML = h + `</div>`; viewCache['events'] = h + `</div>`; } catch { showToast("Falha ao ler eventos", "error"); } }
+        async function loadEventsData() { 
+            try { 
+                const res = await secureFetch(`${apiBase}/events?ns=${selectedNamespace}`); 
+                const d = await res.json(); 
+                if(!d.length) {
+                    const emptyH = `<div class="bg-card glass p-20 rounded-[2.5rem] border border-slate-700/50 text-center flex flex-col items-center slide-up"><div class="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-4"><i class="fas fa-bell-slash text-2xl text-slate-600"></i></div><p class="italic text-slate-500 tracking-widest uppercase text-[10px] font-bold">Nenhum evento recente em ${selectedNamespace}</p></div>`;
+                    document.getElementById('mainContent').innerHTML = emptyH; viewCache['events'] = emptyH; return;
+                }
+                let h = `<div class="space-y-4 slide-up">`; 
+                d.forEach(e => { 
+                    const time = e.lastSeen ? new Date(e.lastSeen).toLocaleTimeString() : '---';
+                    h += `<div class="bg-card glass p-6 rounded-[1.5rem] border-l-4 ${e.type==='Warning'?'border-amber-500 bg-amber-500/5':'border-blue-500 bg-blue-500/5'} border-slate-700/50 flex justify-between items-center shadow-lg transition-all hover:scale-[1.01]"><div><p class="text-white font-black text-xs uppercase tracking-tight">${e.reason} <span class="text-slate-500 font-bold ml-2 opacity-50">/ ${e.source || 'Desconhecido'}</span></p><p class="text-slate-400 mt-2 text-sm leading-relaxed">${e.message}</p></div><span class="text-[10px] font-bold text-slate-600 bg-slate-950/50 px-3 py-1 rounded-full border border-slate-800">${time}</span></div>`; 
+                }); 
+                document.getElementById('mainContent').innerHTML = h + `</div>`; viewCache['events'] = h + `</div>`; 
+            } catch { showToast("Falha ao ler eventos", "error"); } 
+        }
         async function loadNamespaceOptions() { let options = `<option value="all" ${selectedNamespace === 'all' ? 'selected' : ''}>TODOS OS NAMESPACES</option>`; try { const res = await secureFetch(`${apiBase}/namespaces`); if(res.ok) { const ns = await res.json(); options += ns.map(n => `<option value="${n.name}" ${n.name === selectedNamespace ? 'selected' : ''}>${n.name.toUpperCase()}</option>`).join(''); } } catch {} document.getElementById('globalNamespaceSelector').innerHTML = options; }
         function updateHeaderClusterStatus() { const b = document.getElementById('headerClusterBadge'); const t = document.getElementById('headerClusterText'); if(activeCluster) { b.className = "w-2 h-2 rounded-full bg-blue-500 mr-3 animate-pulse"; t.innerText = activeCluster; } else { b.className = "w-2 h-2 rounded-full bg-slate-500 mr-3"; t.innerText = "Nenhum Cluster"; } }
         function loadCurrentView(skipCache = false) { loadView(currentView, null, skipCache); }

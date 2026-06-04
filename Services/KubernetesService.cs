@@ -124,9 +124,34 @@ public class KubernetesService
             var pods = string.IsNullOrEmpty(ns) || ns == "all"
                 ? await _client.CoreV1.ListPodForAllNamespacesAsync()
                 : await _client.CoreV1.ListNamespacedPodAsync(ns);
-            return pods.Items.Select(p => new { name = p.Metadata.Name, @namespace = p.Metadata.NamespaceProperty, status = p.Status.Phase, ip = p.Status.PodIP, node = p.Spec.NodeName, containers = p.Spec.Containers.Select(c => c.Name), created = p.Metadata.CreationTimestamp });
+            return pods.Items.Select(p => new { 
+                name = p.Metadata.Name, 
+                @namespace = p.Metadata.NamespaceProperty, 
+                status = GetPodStatus(p), 
+                ip = p.Status.PodIP, 
+                node = p.Spec.NodeName, 
+                containers = p.Spec.Containers.Select(c => c.Name), 
+                created = p.Metadata.CreationTimestamp 
+            });
         }
         catch { return Array.Empty<object>(); }
+    }
+
+    private string GetPodStatus(V1Pod pod)
+    {
+        if (pod.Metadata.DeletionTimestamp != null) return "Terminating";
+        
+        var containerStatuses = pod.Status.ContainerStatuses;
+        if (containerStatuses != null)
+        {
+            foreach (var status in containerStatuses)
+            {
+                if (status.State.Waiting != null) return status.State.Waiting.Reason;
+                if (status.State.Terminated != null) return status.State.Terminated.Reason;
+            }
+        }
+        
+        return pod.Status.Phase;
     }
 
     public async Task CreatePodAsync(string ns, string name, string image, int? containerPort = null)
