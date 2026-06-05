@@ -1,5 +1,6 @@
 using k8s;
 using k8s.Models;
+using k8s.Autorest;
 using System.Collections.Concurrent;
 using System.Text.Json;
 using KubeManager.API.Models;
@@ -19,6 +20,8 @@ public class KubernetesService
     // Cache simples para o dashboard (5 segundos)
     private static readonly ConcurrentDictionary<string, (DateTime Expiry, object Data)> _dashboardCache = new();
 
+    public string ClustersPath => _clustersPath;
+
     public KubernetesService(IConfiguration config, IHttpContextAccessor httpContextAccessor)
     {
         _config = config;
@@ -27,6 +30,12 @@ public class KubernetesService
         if (!Directory.Exists(_clustersPath)) Directory.CreateDirectory(_clustersPath);
 
         InitializeClient();
+    }
+
+    public static void InvalidateCache(string clusterName)
+    {
+        _clientCache.TryRemove(clusterName, out _);
+        _dashboardCache.TryRemove(clusterName, out _);
     }
 
     private void InitializeClient()
@@ -50,8 +59,6 @@ public class KubernetesService
             if (File.Exists(filePath))
             {
                 var kubeConfig = KubernetesClientConfiguration.BuildConfigFromConfigFile(filePath);
-
-                // Configuração correta de SSL sem vazar callbacks globais
                 var client = new Kubernetes(kubeConfig);
                 _clientCache.TryAdd(clusterName, client);
                 _client = client;
@@ -63,6 +70,21 @@ public class KubernetesService
         }
     }
 
+    private string GetK8sErrorMessage(Exception ex)
+    {
+        if (ex is HttpOperationException httpEx && !string.IsNullOrEmpty(httpEx.Response.Content))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(httpEx.Response.Content);
+                if (doc.RootElement.TryGetProperty("message", out var msg))
+                    return msg.GetString() ?? ex.Message;
+            }
+            catch { }
+        }
+        return ex.Message;
+    }
+
     // ── NODES ──────────────────────────────────────────────
     public async Task<object> GetNodesAsync()
     {
@@ -70,16 +92,47 @@ public class KubernetesService
         try
         {
             var nodes = await _client.CoreV1.ListNodeAsync();
-            return nodes.Items.Select(n => new {
-                name = n.Metadata.Name,
-                status = n.Status.Conditions?.LastOrDefault(c => c.Type == "Ready")?.Status,
-                roles = n.Metadata.Labels?.Where(l => l.Key.StartsWith("node-role.kubernetes.io/")).Select(l => l.Key.Replace("node-role.kubernetes.io/", "")) ?? Array.Empty<string>(),
-                cpu = n.Status.Capacity?.ContainsKey("cpu") == true ? n.Status.Capacity["cpu"].ToString() : "N/A",
-                memory = n.Status.Capacity?.ContainsKey("memory") == true ? n.Status.Capacity["memory"].ToString() : "N/A",
-                k8sVersion = n.Status.NodeInfo?.KubeletVersion ?? "Unknown"
+            return nodes.Items.Select(n => {
+                var readyCondition = n.Status.Conditions?.FirstOrDefault(c => c.Type == "Ready");
+                var rawStatus = readyCondition?.Status?.ToLower() ?? "unknown";
+                var statusStr = rawStatus == "true" ? "Ready" : "NotReady";
+
+                return new {
+                    name = n.Metadata.Name,
+                    status = statusStr,
+                    roles = string.Join(", ", n.Metadata.Labels?.Where(l => l.Key.StartsWith("node-role.kubernetes.io/")).Select(l => l.Key.Replace("node-role.kubernetes.io/", "")) ?? Array.Empty<string>()),
+                    cpu = n.Status.Capacity?.ContainsKey("cpu") == true ? n.Status.Capacity["cpu"].ToString() : "N/A",
+                    memory = n.Status.Capacity?.ContainsKey("memory") == true ? n.Status.Capacity["memory"].ToString() : "N/A",
+                    k8sVersion = n.Status.NodeInfo?.KubeletVersion ?? "Unknown"
+                };
             });
         }
-        catch { return Array.Empty<object>(); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao obter nodes: {ex.Message}");
+            return Array.Empty<object>(); 
+        }
+    }
+
+    public async Task UpdateNodeRoleAsync(string nodeName, string role)
+    {
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
+        try
+        {
+            var node = await _client.CoreV1.ReadNodeAsync(nodeName);
+            var labels = node.Metadata.Labels ?? new Dictionary<string, string>();
+            var keysToRemove = labels.Keys.Where(k => k.StartsWith("node-role.kubernetes.io/")).ToList();
+            foreach (var key in keysToRemove) labels.Remove(key);
+            if (!string.IsNullOrWhiteSpace(role)) labels[$"node-role.kubernetes.io/{role}"] = "";
+
+            var patchObj = new { metadata = new { labels = labels } };
+            var patchJson = JsonSerializer.Serialize(patchObj);
+            await _client.CoreV1.PatchNodeAsync(new V1Patch(patchJson, V1Patch.PatchType.MergePatch), nodeName);
+        }
+        catch (Exception ex)
+        {
+            throw new Exception(GetK8sErrorMessage(ex));
+        }
     }
 
     // ── NAMESPACES ─────────────────────────────────────────
@@ -91,28 +144,32 @@ public class KubernetesService
             var ns = await _client.CoreV1.ListNamespaceAsync();
             return ns.Items.Select(n => new { name = n.Metadata.Name, status = n.Status.Phase, created = n.Metadata.CreationTimestamp });
         }
-        catch { return Array.Empty<object>(); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao obter namespaces: {ex.Message}");
+            return Array.Empty<object>(); 
+        }
     }
 
     public async Task CreateNamespaceAsync(string name)
     {
-        if (_client == null) return;
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
         try
         {
-            var ns = new V1Namespace { Metadata = new V1ObjectMeta { Name = name } };
+            var ns = new V1Namespace { Metadata = new V1ObjectMeta { Name = name.Trim().ToLower() } };
             await _client.CoreV1.CreateNamespaceAsync(ns);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Erro ao criar namespace: {ex.Message}");
-            throw;
+            throw new Exception(GetK8sErrorMessage(ex));
         }
     }
 
     public async Task DeleteNamespaceAsync(string name)
     {
-        if (_client == null) return;
-        try { await _client.CoreV1.DeleteNamespaceAsync(name); } catch { }
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
+        try { await _client.CoreV1.DeleteNamespaceAsync(name); } 
+        catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
     }
 
     // ── PODS ───────────────────────────────────────────────
@@ -134,13 +191,16 @@ public class KubernetesService
                 created = p.Metadata.CreationTimestamp 
             });
         }
-        catch { return Array.Empty<object>(); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao obter pods: {ex.Message}");
+            return Array.Empty<object>(); 
+        }
     }
 
     private string GetPodStatus(V1Pod pod)
     {
         if (pod.Metadata.DeletionTimestamp != null) return "Terminating";
-        
         var containerStatuses = pod.Status.ContainerStatuses;
         if (containerStatuses != null)
         {
@@ -150,13 +210,17 @@ public class KubernetesService
                 if (status.State.Terminated != null) return status.State.Terminated.Reason;
             }
         }
-        
         return pod.Status.Phase;
     }
 
     public async Task CreatePodAsync(string ns, string name, string image, int? containerPort = null)
     {
-        if (_client == null) return;
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
+        ns = ns.Trim(); name = name.Trim().ToLower(); image = image.Trim();
+
+        if (string.IsNullOrEmpty(name)) throw new Exception("O nome do Pod é obrigatório.");
+        if (string.IsNullOrEmpty(image)) throw new Exception("A imagem do contentor é obrigatória.");
+
         try
         {
             var pod = new V1Pod
@@ -182,15 +246,15 @@ public class KubernetesService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Erro ao criar pod: {ex.Message}");
-            throw; // Re-throw to allow controller to return error
+            throw new Exception(GetK8sErrorMessage(ex)); 
         }
     }
 
     public async Task DeletePodAsync(string ns, string name)
     {
-        if (_client == null) return;
-        try { await _client.CoreV1.DeleteNamespacedPodAsync(name, ns); } catch { }
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
+        try { await _client.CoreV1.DeleteNamespacedPodAsync(name, ns); } 
+        catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
     }
 
     // ── DEPLOYMENTS ────────────────────────────────────────
@@ -204,12 +268,17 @@ public class KubernetesService
                 : await _client.AppsV1.ListNamespacedDeploymentAsync(ns);
             return deps.Items.Select(d => new { name = d.Metadata.Name, @namespace = d.Metadata.NamespaceProperty, replicas = d.Spec.Replicas, available = d.Status.AvailableReplicas, image = d.Spec.Template.Spec.Containers.FirstOrDefault()?.Image, created = d.Metadata.CreationTimestamp });
         }
-        catch { return Array.Empty<object>(); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao obter deployments: {ex.Message}");
+            return Array.Empty<object>(); 
+        }
     }
 
     public async Task CreateDeploymentAsync(string ns, string name, string image, int replicas = 1, int? containerPort = null, Dictionary<string, string>? envVars = null, string? cpuLimit = null, string? memLimit = null)
     {
-        if (_client == null) return;
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
+        ns = ns.Trim(); name = name.Trim().ToLower(); image = image.Trim();
         try
         {
             var container = new V1Container
@@ -222,26 +291,38 @@ public class KubernetesService
             };
             if (!string.IsNullOrEmpty(cpuLimit)) container.Resources.Limits["cpu"] = new ResourceQuantity(cpuLimit);
             if (!string.IsNullOrEmpty(memLimit)) container.Resources.Limits["memory"] = new ResourceQuantity(memLimit);
-            var dep = new V1Deployment { Metadata = new V1ObjectMeta { Name = name, NamespaceProperty = ns }, Spec = new V1DeploymentSpec { Replicas = replicas, Selector = new V1LabelSelector { MatchLabels = new Dictionary<string, string> { { "app", name } } }, Template = new V1PodTemplateSpec { Metadata = new V1ObjectMeta { Labels = new Dictionary<string, string> { { "app", name } } }, Spec = new V1PodSpec { Containers = new List<V1Container> { container } } } } };
+            
+            var dep = new V1Deployment { 
+                Metadata = new V1ObjectMeta { Name = name, NamespaceProperty = ns }, 
+                Spec = new V1DeploymentSpec { 
+                    Replicas = replicas, 
+                    Selector = new V1LabelSelector { MatchLabels = new Dictionary<string, string> { { "app", name } } }, 
+                    Template = new V1PodTemplateSpec { 
+                        Metadata = new V1ObjectMeta { Labels = new Dictionary<string, string> { { "app", name } } }, 
+                        Spec = new V1PodSpec { Containers = new List<V1Container> { container } } 
+                    } 
+                } 
+            };
             await _client.AppsV1.CreateNamespacedDeploymentAsync(dep, ns);
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Erro na operação: {ex.Message}");
-            throw;
-        }
+        catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
     }
 
     public async Task DeleteDeploymentAsync(string ns, string name)
     {
-        if (_client == null) return;
-        try { await _client.AppsV1.DeleteNamespacedDeploymentAsync(name, ns); } catch { }
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
+        try { await _client.AppsV1.DeleteNamespacedDeploymentAsync(name, ns); } 
+        catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
     }
 
     public async Task ScaleDeploymentAsync(string ns, string name, int replicas)
     {
-        if (_client == null) return;
-        try { var patch = new V1Patch($"{{\"spec\": {{\"replicas\": {replicas}}}}}", V1Patch.PatchType.MergePatch); await _client.AppsV1.PatchNamespacedDeploymentScaleAsync(patch, name, ns); } catch { }
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
+        try { 
+            var patch = new V1Patch($"{{\"spec\": {{\"replicas\": {replicas}}}}}", V1Patch.PatchType.MergePatch); 
+            await _client.AppsV1.PatchNamespacedDeploymentScaleAsync(patch, name, ns); 
+        } 
+        catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
     }
 
     // ── SERVICES ───────────────────────────────────────────
@@ -250,14 +331,8 @@ public class KubernetesService
         if (_client == null) return Array.Empty<object>();
         try
         {
-            var svcsTask = string.IsNullOrEmpty(ns) || ns == "all"
-                ? _client.CoreV1.ListServiceForAllNamespacesAsync()
-                : _client.CoreV1.ListNamespacedServiceAsync(ns);
-
-            var epsTask = string.IsNullOrEmpty(ns) || ns == "all"
-                ? _client.CoreV1.ListEndpointsForAllNamespacesAsync()
-                : _client.CoreV1.ListNamespacedEndpointsAsync(ns);
-
+            var svcsTask = string.IsNullOrEmpty(ns) || ns == "all" ? _client.CoreV1.ListServiceForAllNamespacesAsync() : _client.CoreV1.ListNamespacedServiceAsync(ns);
+            var epsTask = string.IsNullOrEmpty(ns) || ns == "all" ? _client.CoreV1.ListEndpointsForAllNamespacesAsync() : _client.CoreV1.ListNamespacedEndpointsAsync(ns);
             await Task.WhenAll(svcsTask, epsTask);
             var svcs = await svcsTask;
             var allEps = await epsTask;
@@ -265,9 +340,7 @@ public class KubernetesService
             return svcs.Items.Select(s => {
                 var eps = allEps.Items.FirstOrDefault(e => e.Metadata.Name == s.Metadata.Name && e.Metadata.NamespaceProperty == s.Metadata.NamespaceProperty);
                 int activeEndpoints = eps?.Subsets?.Sum(sub => sub.Addresses?.Count ?? 0) ?? 0;
-
-                return new
-                {
+                return new {
                     name = s.Metadata.Name,
                     @namespace = s.Metadata.NamespaceProperty,
                     type = s.Spec.Type,
@@ -278,46 +351,26 @@ public class KubernetesService
                 };
             });
         }
-        catch { return Array.Empty<object>(); }
+        catch (Exception ex) { Console.WriteLine($"Erro ao obter serviços: {ex.Message}"); return Array.Empty<object>(); }
     }
 
     public async Task CreateServiceAsync(string ns, string name, string appLabel, List<ServicePortDto> ports, string type = "ClusterIP")
     {
-        if (_client == null) return;
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
         try
         {
-            var svcPorts = ports.Select(p => new V1ServicePort
-            {
-                Port = p.Port,
-                TargetPort = p.TargetPort,
-                NodePort = p.NodePort,
-                Protocol = p.Protocol,
-                Name = p.Name
-            }).ToList();
-
-            var svc = new V1Service
-            {
-                Metadata = new V1ObjectMeta { Name = name, NamespaceProperty = ns },
-                Spec = new V1ServiceSpec
-                {
-                    Type = type,
-                    Selector = new Dictionary<string, string> { { "app", appLabel } },
-                    Ports = svcPorts
-                }
-            };
+            var svcPorts = ports.Select(p => new V1ServicePort { Port = p.Port, TargetPort = p.TargetPort, NodePort = p.NodePort, Protocol = p.Protocol, Name = p.Name }).ToList();
+            var svc = new V1Service { Metadata = new V1ObjectMeta { Name = name.Trim().ToLower(), NamespaceProperty = ns }, Spec = new V1ServiceSpec { Type = type, Selector = new Dictionary<string, string> { { "app", appLabel.Trim() } }, Ports = svcPorts } };
             await _client.CoreV1.CreateNamespacedServiceAsync(svc, ns);
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Erro na operação: {ex.Message}");
-            throw;
-        }
+        catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
     }
 
     public async Task DeleteServiceAsync(string ns, string name)
     {
-        if (_client == null) return;
-        try { await _client.CoreV1.DeleteNamespacedServiceAsync(name, ns); } catch { }
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
+        try { await _client.CoreV1.DeleteNamespacedServiceAsync(name, ns); } 
+        catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
     }
 
     // ── INGRESSES ──────────────────────────────────────────
@@ -326,70 +379,35 @@ public class KubernetesService
         if (_client == null) return Array.Empty<object>();
         try
         {
-            var ingresses = string.IsNullOrEmpty(ns) || ns == "all"
-                ? await _client.NetworkingV1.ListIngressForAllNamespacesAsync()
-                : await _client.NetworkingV1.ListNamespacedIngressAsync(ns);
+            var ingresses = string.IsNullOrEmpty(ns) || ns == "all" ? await _client.NetworkingV1.ListIngressForAllNamespacesAsync() : await _client.NetworkingV1.ListNamespacedIngressAsync(ns);
             return ingresses.Items.Select(i => new { name = i.Metadata.Name, @namespace = i.Metadata.NamespaceProperty, hosts = i.Spec.Rules?.Select(r => r.Host), address = i.Status.LoadBalancer?.Ingress?.FirstOrDefault()?.Ip ?? i.Status.LoadBalancer?.Ingress?.FirstOrDefault()?.Hostname, created = i.Metadata.CreationTimestamp });
         }
-        catch { return Array.Empty<object>(); }
+        catch (Exception ex) { Console.WriteLine($"Erro ao obter ingresses: {ex.Message}"); return Array.Empty<object>(); }
     }
 
     public async Task CreateIngressAsync(string ns, string name, string host, string serviceName, int port, string path = "/", string pathType = "Prefix", string? tlsSecret = null)
     {
-        if (_client == null) return;
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
         try
         {
-            var ingress = new V1Ingress
-            {
-                Metadata = new V1ObjectMeta
-                {
-                    Name = name,
-                    NamespaceProperty = ns,
-                    Annotations = new Dictionary<string, string> { { "kubernetes.io/ingress.class", "nginx" } }
-                },
-                Spec = new V1IngressSpec
-                {
+            var ingress = new V1Ingress {
+                Metadata = new V1ObjectMeta { Name = name.Trim().ToLower(), NamespaceProperty = ns, Annotations = new Dictionary<string, string> { { "kubernetes.io/ingress.class", "nginx" } } },
+                Spec = new V1IngressSpec {
                     IngressClassName = "nginx",
-                    Rules = new List<V1IngressRule> {
-                        new V1IngressRule {
-                            Host = host,
-                            Http = new V1HTTPIngressRuleValue {
-                                Paths = new List<V1HTTPIngressPath> {
-                                    new V1HTTPIngressPath {
-                                        Path = path,
-                                        PathType = pathType,
-                                        Backend = new V1IngressBackend {
-                                            Service = new V1IngressServiceBackend {
-                                                Name = serviceName,
-                                                Port = new V1ServiceBackendPort { Number = port }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    Rules = new List<V1IngressRule> { new V1IngressRule { Host = host, Http = new V1HTTPIngressRuleValue { Paths = new List<V1HTTPIngressPath> { new V1HTTPIngressPath { Path = path, PathType = pathType, Backend = new V1IngressBackend { Service = new V1IngressServiceBackend { Name = serviceName, Port = new V1ServiceBackendPort { Number = port } } } } } } } }
                 }
             };
-            if (!string.IsNullOrEmpty(tlsSecret))
-            {
-                ingress.Spec.Tls = new List<V1IngressTLS> {
-                    new V1IngressTLS { Hosts = new List<string> { host }, SecretName = tlsSecret }
-                };
-            }
+            if (!string.IsNullOrEmpty(tlsSecret)) ingress.Spec.Tls = new List<V1IngressTLS> { new V1IngressTLS { Hosts = new List<string> { host }, SecretName = tlsSecret } };
             await _client.NetworkingV1.CreateNamespacedIngressAsync(ingress, ns);
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Erro na operação: {ex.Message}");
-            throw;
-        }
+        catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
     }
 
     public async Task DeleteIngressAsync(string ns, string name)
     {
-        if (_client == null) return;
-        try { await _client.NetworkingV1.DeleteNamespacedIngressAsync(name, ns); } catch { }
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
+        try { await _client.NetworkingV1.DeleteNamespacedIngressAsync(name, ns); } 
+        catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
     }
 
     // ── EVENTS ─────────────────────────────────────────────
@@ -398,19 +416,18 @@ public class KubernetesService
         if (_client == null) return Array.Empty<object>();
         try
         {
-            var events = string.IsNullOrEmpty(ns) || ns == "all"
-                ? await _client.CoreV1.ListEventForAllNamespacesAsync()
-                : await _client.CoreV1.ListNamespacedEventAsync(ns);
+            var events = string.IsNullOrEmpty(ns) || ns == "all" ? await _client.CoreV1.ListEventForAllNamespacesAsync() : await _client.CoreV1.ListNamespacedEventAsync(ns);
             return events.Items.OrderByDescending(e => e.LastTimestamp ?? e.EventTime ?? DateTime.MinValue).Select(e => new { name = e.Metadata.Name, type = e.Type, @namespace = e.Metadata.NamespaceProperty, reason = e.Reason, message = e.Message, source = e.Source?.Component, count = e.Count, lastSeen = e.LastTimestamp ?? e.FirstTimestamp });
         }
-        catch { return Array.Empty<object>(); }
+        catch (Exception ex) { Console.WriteLine($"Erro ao obter eventos: {ex.Message}"); return Array.Empty<object>(); }
     }
 
     // ── LOGS ──────────────────────────────────────────────
     public async Task<string> GetPodLogsAsync(string ns, string name)
     {
         if (_client == null) return "Offline";
-        try { var stream = await _client.CoreV1.ReadNamespacedPodLogAsync(name, ns); using var reader = new StreamReader(stream); return await reader.ReadToEndAsync(); } catch { return "Erro logs"; }
+        try { var stream = await _client.CoreV1.ReadNamespacedPodLogAsync(name, ns); using var reader = new StreamReader(stream); return await reader.ReadToEndAsync(); } 
+        catch (Exception ex) { return $"Erro ao ler logs: {ex.Message}"; }
     }
 
     // ── YAML EDITOR ───────────────────────────────────────
@@ -419,18 +436,34 @@ public class KubernetesService
         if (_client == null) return "{}";
         try
         {
-            object obj = resource.ToLower() switch { "pods" => await _client.CoreV1.ReadNamespacedPodAsync(name, ns), "deployments" => await _client.AppsV1.ReadNamespacedDeploymentAsync(name, ns), "services" => await _client.CoreV1.ReadNamespacedServiceAsync(name, ns), "namespaces" => await _client.CoreV1.ReadNamespaceAsync(name), "ingresses" => await _client.NetworkingV1.ReadNamespacedIngressAsync(name, ns), _ => throw new Exception("NA") };
+            object obj = resource.ToLower() switch { 
+                "pods" => await _client.CoreV1.ReadNamespacedPodAsync(name, ns), 
+                "deployments" => await _client.AppsV1.ReadNamespacedDeploymentAsync(name, ns), 
+                "services" => await _client.CoreV1.ReadNamespacedServiceAsync(name, ns), 
+                "namespaces" => await _client.CoreV1.ReadNamespaceAsync(name), 
+                "ingresses" => await _client.NetworkingV1.ReadNamespacedIngressAsync(name, ns), 
+                "nodes" => await _client.CoreV1.ReadNodeAsync(name),
+                _ => throw new Exception("Recurso não suportado para YAML") 
+            };
             return new YamlDotNet.Serialization.SerializerBuilder().WithNamingConvention(YamlDotNet.Serialization.NamingConventions.CamelCaseNamingConvention.Instance).Build().Serialize(obj);
         }
-        catch { return "Erro YAML"; }
+        catch (Exception ex) { return $"Erro ao carregar YAML: {ex.Message}"; }
     }
 
     public async Task UpdateYamlAsync(string resource, string ns, string name, string yaml)
     {
-        if (_client == null) return;
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
         try
         {
-            var type = resource.ToLower() switch { "pods" => typeof(V1Pod), "deployments" => typeof(V1Deployment), "services" => typeof(V1Service), "namespaces" => typeof(V1Namespace), "ingresses" => typeof(V1Ingress), _ => throw new Exception("NA") };
+            var type = resource.ToLower() switch { 
+                "pods" => typeof(V1Pod), 
+                "deployments" => typeof(V1Deployment), 
+                "services" => typeof(V1Service), 
+                "namespaces" => typeof(V1Namespace), 
+                "ingresses" => typeof(V1Ingress), 
+                "nodes" => typeof(V1Node),
+                _ => throw new Exception("Recurso não suportado para YAML") 
+            };
             var obj = new YamlDotNet.Serialization.DeserializerBuilder().WithNamingConvention(YamlDotNet.Serialization.NamingConventions.CamelCaseNamingConvention.Instance).IgnoreUnmatchedProperties().Build().Deserialize(yaml, type);
             if (obj == null) return;
 
@@ -439,12 +472,9 @@ public class KubernetesService
             else if (resource == "services") await _client.CoreV1.ReplaceNamespacedServiceAsync((V1Service)obj, name, ns);
             else if (resource == "namespaces") await _client.CoreV1.ReplaceNamespaceAsync((V1Namespace)obj, name);
             else if (resource == "ingresses") await _client.NetworkingV1.ReplaceNamespacedIngressAsync((V1Ingress)obj, name, ns);
+            else if (resource == "nodes") await _client.CoreV1.ReplaceNodeAsync((V1Node)obj, name);
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Erro na operação: {ex.Message}");
-            throw;
-        }
+        catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
     }
 
     // ── DASHBOARD ──────────────────────────────────────────
@@ -452,58 +482,35 @@ public class KubernetesService
     {
         var context = _httpContextAccessor.HttpContext;
         var clusterName = context?.Request.Headers["X-K8s-Cluster"].ToString() ?? "default";
-
-        // Verificar cache (5 segundos)
-        if (_dashboardCache.TryGetValue(clusterName, out var cached) && cached.Expiry > DateTime.UtcNow)
-        {
-            return cached.Data;
-        }
-
+        if (_dashboardCache.TryGetValue(clusterName, out var cached) && cached.Expiry > DateTime.UtcNow) return cached.Data;
         if (_client == null) return new { totalNodes = 0, readyNodes = 0, totalPods = 0, runningPods = 0, totalNamespaces = 0, totalDeployments = 0, cpuUsage = 0, memUsage = 0, totalCpu = "N/A", totalMem = "N/A", hasRealMetrics = false };
 
         try
         {
-            // Chamadas paralelas para fluidez máxima
             var nodesTask = _client.CoreV1.ListNodeAsync();
             var podsTask = _client.CoreV1.ListPodForAllNamespacesAsync();
             var nsTask = _client.CoreV1.ListNamespaceAsync();
             var depsTask = _client.AppsV1.ListDeploymentForAllNamespacesAsync();
-
             await Task.WhenAll(nodesTask, podsTask, nsTask, depsTask);
-
-            var nodes = await nodesTask;
-            var pods = await podsTask;
-            var namespaces = await nsTask;
-            var deployments = await depsTask;
+            var nodes = await nodesTask; var pods = await podsTask; var namespaces = await nsTask; var deployments = await depsTask;
 
             long totalCpu = 0; long totalMem = 0;
-            foreach (var node in nodes.Items)
-            {
-                if (node.Status.Capacity != null)
-                {
+            foreach (var node in nodes.Items) {
+                if (node.Status.Capacity != null) {
                     if (node.Status.Capacity.TryGetValue("cpu", out var c)) totalCpu += ParseCpu(c.ToString());
                     if (node.Status.Capacity.TryGetValue("memory", out var m)) totalMem += ParseMemory(m.ToString());
                 }
             }
 
-            int cpuUsagePct = 0;
-            int memUsagePct = 0;
-            bool hasRealMetrics = false;
-
-            try
-            {
+            int cpuUsagePct = 0; int memUsagePct = 0; bool hasRealMetrics = false;
+            try {
                 var metrics = await _client.CustomObjects.GetClusterCustomObjectAsync("metrics.k8s.io", "v1beta1", "nodes", "");
-                string? metricsJson = metrics?.ToString();
-                if (!string.IsNullOrEmpty(metricsJson))
-                {
-                    using var doc = JsonDocument.Parse(metricsJson);
-                    if (doc.RootElement.TryGetProperty("items", out var items))
-                    {
+                if (metrics != null) {
+                    using var doc = JsonDocument.Parse(metrics.ToString()!);
+                    if (doc.RootElement.TryGetProperty("items", out var items)) {
                         long usedCpu = 0; long usedMem = 0;
-                        foreach (var item in items.EnumerateArray())
-                        {
-                            if (item.TryGetProperty("usage", out var usage))
-                            {
+                        foreach (var item in items.EnumerateArray()) {
+                            if (item.TryGetProperty("usage", out var usage)) {
                                 usedCpu += ParseCpu(usage.GetProperty("cpu").GetString() ?? "0");
                                 usedMem += ParseMemory(usage.GetProperty("memory").GetString() ?? "0");
                             }
@@ -513,35 +520,16 @@ public class KubernetesService
                         hasRealMetrics = true;
                     }
                 }
-            }
-            catch { }
+            } catch { }
 
-            var result = new
-            {
-                totalNodes = nodes.Items.Count,
-                readyNodes = nodes.Items.Count(n => n.Status.Conditions?.Any(c => c.Type == "Ready" && c.Status == "True") == true),
-                runningPods = pods.Items.Count(p => p.Status.Phase == "Running"),
-                totalPods = pods.Items.Count,
-                totalNamespaces = namespaces.Items.Count,
-                totalDeployments = deployments.Items.Count,
-                cpuUsage = cpuUsagePct,
-                memUsage = memUsagePct,
-                totalCpu = $"{totalCpu / 1000.0} Cores",
-                totalMem = $"{Math.Round(totalMem / 1024.0 / 1024.0 / 1024.0, 1)} GB",
-                hasRealMetrics = hasRealMetrics
-            };
-
+            var result = new { totalNodes = nodes.Items.Count, readyNodes = nodes.Items.Count(n => n.Status.Conditions?.Any(c => c.Type == "Ready" && c.Status == "True") == true), runningPods = pods.Items.Count(p => p.Status.Phase == "Running"), totalPods = pods.Items.Count, totalNamespaces = namespaces.Items.Count, totalDeployments = deployments.Items.Count, cpuUsage = cpuUsagePct, memUsage = memUsagePct, totalCpu = $"{totalCpu / 1000.0} Cores", totalMem = $"{Math.Round(totalMem / 1024.0 / 1024.0 / 1024.0, 1)} GB", hasRealMetrics = hasRealMetrics };
             _dashboardCache[clusterName] = (DateTime.UtcNow.AddSeconds(5), result);
             return result;
         }
-        catch
-        {
-            return new { totalNodes = 0, readyNodes = 0, totalPods = 0, runningPods = 0, totalNamespaces = 0, totalDeployments = 0, cpuUsage = 0, memUsage = 0, totalCpu = "Erro", totalMem = "Erro", hasRealMetrics = false };
-        }
+        catch { return new { totalNodes = 0, readyNodes = 0, totalPods = 0, runningPods = 0, totalNamespaces = 0, totalDeployments = 0, cpuUsage = 0, memUsage = 0, totalCpu = "Erro", totalMem = "Erro", hasRealMetrics = false }; }
     }
 
-    private long ParseCpu(string cpu)
-    {
+    private long ParseCpu(string cpu) {
         if (string.IsNullOrEmpty(cpu)) return 0;
         if (cpu.EndsWith("m")) return long.Parse(cpu.TrimEnd('m'));
         if (cpu.EndsWith("n")) return long.Parse(cpu.TrimEnd('n')) / 1000000;
@@ -550,12 +538,10 @@ public class KubernetesService
         return 0;
     }
 
-    private long ParseMemory(string mem)
-    {
+    private long ParseMemory(string mem) {
         if (string.IsNullOrEmpty(mem)) return 0;
         string numericPart = new string(mem.TakeWhile(char.IsDigit).ToArray());
         if (!long.TryParse(numericPart, out long val)) return 0;
-
         if (mem.EndsWith("Ki")) return val * 1024;
         if (mem.EndsWith("Mi")) return val * 1024 * 1024;
         if (mem.EndsWith("Gi")) return val * 1024 * 1024 * 1024;

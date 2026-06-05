@@ -82,7 +82,7 @@
                 <a onclick="loadView('vms', this)" class="nav-item flex-1 flex items-center px-6 py-3.5 mb-1 rounded-xl text-slate-300">
                     <i class="fas fa-desktop w-6 opacity-50"></i> <span class="font-medium">Gerir VMs Proxmox</span>
                 </a>
-                <button id="vmLogoutBtn" onclick="logoutProxmox()" class="hidden px-4 py-3.5 text-slate-500 hover:text-red-400 transition" title="Logout Proxmox">
+                <button id="vmLogoutBtn" onclick="logoutProxmox()" class="hidden px-4 py-3.5 text-slate-500 hover:text-red-400 transition" title="Terminar Sessão Proxmox">
                     <i class="fas fa-sign-out-alt"></i>
                 </button>
             </div>
@@ -93,7 +93,7 @@
         </nav>
         
         <div class="p-6 border-t border-slate-700 text-[10px] text-slate-500 font-bold uppercase tracking-widest text-center">
-            TL2 LTI 25/26 | v2.6 Optimized
+            TL2 LTI 25/26
         </div>
     </aside>
 
@@ -123,7 +123,7 @@
         <div class="flex-1 overflow-y-auto p-10" id="mainContent">
         </div>
         
-        <div id="toastArea" class="fixed bottom-6 right-6 z-50 flex flex-col space-y-3"></div>
+        <div id="toastArea" class="fixed bottom-6 right-6 z-[100] flex flex-col space-y-3"></div>
     </main>
 
     <!-- MODAL -->
@@ -168,27 +168,41 @@
         async function attemptLogin() {
             const btn = event?.target;
             if(btn) btn.disabled = true;
-            const u = document.getElementById('loginUser').value;
+            let u = document.getElementById('loginUser').value;
             const p = document.getElementById('loginPass').value;
             const ip = document.getElementById('loginIp').value;
+            
             if(!u || !p || !ip) { if(btn) btn.disabled = false; return showToast("Preencha todos os campos", "error"); }
+            
             let url = ip;
             if(!url.startsWith('http')) url = 'https://' + url;
             if(!url.includes(':', 8)) url = url + ':8006';
+
+            let r = 'pam';
+            if(u.includes('@')) {
+                const parts = u.split('@');
+                u = parts[0];
+                r = parts[1];
+            }
+
             try {
-                const res = await fetch(`${apiBase}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p, url: url }) });
+                const res = await fetch(`${apiBase}/auth/login`, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ username: u, password: p, url: url, realm: r }) 
+                });
                 const d = await res.json();
                 if(res.ok && d.success) {
-                    session = { ticket: d.ticket, csrf: d.csrfPreventionToken, user: d.username, url: url };
-                    sessionStorage.setItem('pve_ticket', session.ticket); sessionStorage.setItem('pve_csrf', session.csrf); sessionStorage.setItem('pve_user', session.user); sessionStorage.setItem('pve_url', session.url);
-                    showToast(`Autenticado em ${url}`, "success"); updateProxmoxButtonState(); loadVmData();
+                    session = { ticket: d.ticket, csrf: d.csrfPreventionToken, user: d.username, url: url };   
+                    sessionStorage.setItem('pve_ticket', session.ticket); sessionStorage.setItem('pve_csrf', session.csrf); sessionStorage.setItem('pve_user', session.user); sessionStorage.setItem('pve_url', session.url);  
+                    showToast(`Autenticado em ${url}`, "success"); updateProxmoxButtonState(); loadVmData();   
                 } else showToast(d.message || "Erro de credenciais", "error");
             } catch { showToast("Não foi possível contactar o Proxmox", "error"); }
             finally { if(btn) btn.disabled = false; }
         }
 
-        function logoutProxmox() { 
-            sessionStorage.removeItem('pve_ticket'); sessionStorage.removeItem('pve_csrf'); sessionStorage.removeItem('pve_user'); sessionStorage.removeItem('pve_url'); 
+        function logoutProxmox() {
+            sessionStorage.removeItem('pve_ticket'); sessionStorage.removeItem('pve_csrf'); sessionStorage.removeItem('pve_user'); sessionStorage.removeItem('pve_url');
             session = { ticket: null, csrf: null, user: null, url: null }; updateProxmoxButtonState();
             if(currentView === 'vms') { delete viewCache['vms']; loadVmData(); }
             showToast("Sessão Proxmox terminada", "info");
@@ -203,7 +217,20 @@
                 const res = await fetch(url, options);
                 if(res.status === 401 && url.includes('/vms')) { session.ticket = null; updateProxmoxButtonState(); loadVmData(); }
                 return res;
+            } catch (err) {
+                console.error("Fetch error:", err);
+                showToast("Erro de ligação (Timeout ou Rede)", "error");
+                throw err;
             } finally { document.getElementById('loadingIndicator').classList.add('hidden'); }
+        }
+
+        function showToast(m, t) { 
+            const a = document.getElementById('toastArea'); 
+            const d = document.createElement('div'); 
+            d.className = `${t==='error'?'bg-red-600 shadow-red-900/40':'bg-blue-600 shadow-blue-900/40'} text-white px-8 py-4 rounded-2xl shadow-2xl fade-in flex items-center space-x-3 border border-white/20 min-w-[300px] backdrop-blur-md`; 
+            d.innerHTML = `<i class="fas ${t==='error'?'fa-exclamation-triangle':'fa-info-circle'} text-lg"></i><span class="font-bold text-xs uppercase tracking-wider">${m}</span>`; 
+            a.appendChild(d); 
+            setTimeout(() => { d.style.opacity = '0'; d.style.transform = 'translateX(20px)'; setTimeout(() => d.remove(), 500); }, 5000); 
         }
 
         function loadView(v, el, skipCache = false) {
@@ -232,17 +259,32 @@
 
         async function loadVmData() {
             if(!session.ticket) {
-                const h = `<div class="flex justify-center py-10 slide-up"><div class="bg-card glass p-10 rounded-[2.5rem] border border-slate-700/50 shadow-2xl w-full max-w-md"><div class="text-center mb-8"><div class="w-16 h-16 bg-blue-600/10 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4"><i class="fas fa-desktop text-2xl"></i></div><h3 class="text-2xl font-bold text-white tracking-tight">Proxmox Login</h3><p class="text-slate-400 mt-1 text-xs">Ligue-se ao nó Proxmox para gerir a infraestrutura</p></div><div class="space-y-4"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">IP do Servidor</label><input type="text" id="loginIp" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="ex: 192.168.24.196"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Utilizador</label><input type="text" id="loginUser" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="root"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Senha</label><input type="password" id="loginPass" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="••••••••"></div><button onclick="attemptLogin()" class="w-full bg-gradient-to-r from-blue-600 to-blue-500 py-4 rounded-xl font-bold mt-4 hover:shadow-lg hover:shadow-blue-900/40 transition-all active:scale-95 text-white tracking-widest text-xs">LIGAR AO PROXMOX</button></div></div></div>`;
+                const h = `<div class="flex justify-center py-10 slide-up"><div class="bg-card glass p-10 rounded-[2.5rem] border border-slate-700/50 shadow-2xl w-full max-w-md"><div class="text-center mb-8"><div class="w-16 h-16 bg-blue-600/10 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4"><i class="fas fa-desktop text-2xl"></i></div><h3 class="text-2xl font-bold text-white tracking-tight">Proxmox Login</h3><p class="text-slate-400 mt-1 text-xs">Ligue-se ao nó Proxmox para gerir a infraestrutura</p></div><div class="space-y-4"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">IP do Servidor</label><input type="text" id="loginIp" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="ex: 192.168.24.196"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Utilizador</label><input type="text" id="loginUser" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="root"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Senha</label><input type="password" id="loginPass" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:outline-none transition shadow-inner" placeholder="••••••••"></div><button onclick="attemptLogin()" class="w-full bg-gradient-to-r from-blue-600 to-blue-500 py-4 rounded-xl font-bold mt-4 hover:shadow-lg hover:shadow-blue-900/40 transition-all active:scale-95 text-white tracking-widest text-xs">LIGAR AO PROXMOX</button><div class="text-center pt-2"><a href="javascript:void(0)" onclick="const ip=document.getElementById('loginIp').value; if(ip) window.open((ip.startsWith('http')?'':'https://')+ip+(ip.includes(':')?'':':8006'),'_blank')" class="text-[10px] text-blue-400 hover:text-blue-300 font-bold uppercase tracking-tighter transition"><i class="fas fa-shield-alt mr-1"></i> Validar Certificado / Sessão</a></div></div></div></div>`;
                 if (currentView === 'vms') document.getElementById('mainContent').innerHTML = h; return;
             }
             try {
                 const res = await secureFetch(`${apiBase}/vms`);
+                if(!res.ok) throw new Error("Erro de resposta");
                 const vms = await res.json();
                 if (currentView !== 'vms') return;
                 let h = `<div class="bg-card rounded-2xl overflow-hidden border border-slate-700 shadow-2xl slide-up"><table class="w-full text-left"><thead class="bg-slate-800/80 text-[10px] uppercase font-bold text-slate-400 tracking-wider"><tr class="border-b border-slate-700/50"><th class="px-8 py-5">VMID</th><th class="px-8 py-5">Nome</th><th class="px-8 py-5 text-center">Estado</th><th class="px-8 py-5 text-right">Controlo</th></tr></thead><tbody class="divide-y divide-slate-700/30">`;
                 vms.forEach(vm => {
-                    const s = vm.status === 'running' ? 'bg-green-500/20 text-green-400 border-green-500/20' : 'bg-red-500/20 text-red-400 border-red-500/20';
-                    h += `<tr class="hover:bg-slate-800/30 transition group"><td class="px-8 py-5 font-mono text-blue-400 font-bold">${vm.vmId}</td><td class="px-8 py-5 font-bold text-white">${vm.name} <span class="block text-[10px] text-slate-500 font-normal uppercase tracking-tighter mt-0.5">Node: ${vm.node}</span></td><td class="px-8 py-5 text-center"><span class="px-3 py-1 rounded-full text-[10px] font-bold uppercase border ${s}">${vm.status}</span></td><td class="px-8 py-5 text-right space-x-2"><button onclick="vmAction('${vm.node}', ${vm.vmId}, 'start')" class="w-10 h-10 rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white transition shadow-sm"><i class="fas fa-play"></i></button><button onclick="vmAction('${vm.node}', ${vm.vmId}, 'shutdown')" class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500 hover:text-white transition shadow-sm"><i class="fas fa-power-off"></i></button></td></tr>`;
+                    const isRunning = vm.status === 'running';
+                    const isPaused = vm.status === 'paused';
+                    const s = isRunning ? 'bg-green-500/20 text-green-400 border-green-500/20' : 
+                              isPaused ? 'bg-orange-500/20 text-orange-400 border-orange-500/20' :
+                              'bg-red-500/20 text-red-400 border-red-500/20';
+                    
+                    h += `<tr class="hover:bg-slate-800/30 transition group"><td class="px-8 py-5 font-mono text-blue-400 font-bold">${vm.vmId}</td><td class="px-8 py-5 font-bold text-white">${vm.name} <span class="block text-[10px] text-slate-500 font-normal uppercase tracking-tighter mt-0.5">Node: ${vm.node}</span></td><td class="px-8 py-5 text-center"><span class="px-3 py-1 rounded-full text-[10px] font-bold uppercase border ${s}">${vm.status}</span></td><td class="px-8 py-5 text-right space-x-1.5">`;
+                    
+                    if (isRunning) {
+                        h += `<button onclick="openVmConsole('${vm.node}', ${vm.vmId}, '${vm.name}')" class="w-9 h-9 rounded-lg bg-slate-500/10 text-slate-400 hover:bg-slate-500 hover:text-white transition shadow-sm" title="Abrir Shell Remote"><i class="fas fa-terminal text-xs"></i></button><button onclick="vmAction('${vm.node}', ${vm.vmId}, 'reboot')" class="w-9 h-9 rounded-lg bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white transition shadow-sm" title="Reboot"><i class="fas fa-redo text-xs"></i></button><button onclick="vmAction('${vm.node}', ${vm.vmId}, 'shutdown')" class="w-9 h-9 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500 hover:text-white transition shadow-sm" title="Shutdown"><i class="fas fa-power-off text-xs"></i></button><button onclick="vmAction('${vm.node}', ${vm.vmId}, 'stop')" class="w-9 h-9 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition shadow-sm" title="Stop (Hard Kill)"><i class="fas fa-skull text-xs"></i></button><button onclick="vmAction('${vm.node}', ${vm.vmId}, 'suspend')" class="w-9 h-9 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500 hover:text-white transition shadow-sm" title="Suspend / Hibernate"><i class="fas fa-moon text-xs"></i></button>`;
+                    } else if (isPaused) {
+                        h += `<button onclick="vmAction('${vm.node}', ${vm.vmId}, 'resume')" class="w-9 h-9 rounded-lg bg-orange-500/10 text-orange-400 hover:bg-orange-500 hover:text-white transition shadow-sm" title="Resume"><i class="fas fa-play-circle text-xs"></i></button><button onclick="vmAction('${vm.node}', ${vm.vmId}, 'stop')" class="w-9 h-9 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition shadow-sm" title="Stop (Hard Kill)"><i class="fas fa-skull text-xs"></i></button>`;
+                    } else {
+                        h += `<button onclick="vmAction('${vm.node}', ${vm.vmId}, 'start')" class="w-9 h-9 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white transition shadow-sm" title="Start"><i class="fas fa-play text-xs"></i></button>`;
+                    }
+                    h += `<button onclick="openCloneVmModal('${vm.node}', ${vm.vmId}, '${vm.name}')" class="w-9 h-9 rounded-lg bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500 hover:text-white transition shadow-sm" title="Clonar VM"><i class="fas fa-copy text-xs"></i></button><button onclick="deleteVm('${vm.node}', ${vm.vmId})" class="w-9 h-9 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white transition shadow-sm" title="Eliminar VM"><i class="fas fa-trash-alt text-xs"></i></button></td></tr>`;
                 });
                 const finalH = h + `</tbody></table></div>`; document.getElementById('mainContent').innerHTML = finalH; viewCache['vms'] = finalH;
             } catch { 
@@ -252,11 +294,40 @@
             }
         }
 
+        function openVmConsole(node, vmid, name) {
+            if(!session.url) return showToast("Sessão Proxmox não encontrada", "error");
+            const consoleUrl = `${session.url}/?console=kvm&novnc=1&vmid=${vmid}&vmname=${name}&node=${node}&resize=off&cmd=`;
+            const w = 1100; const h = 700;
+            const left = (screen.width/2)-(w/2); const top = (screen.height/2)-(h/2);
+            window.open(consoleUrl, `pve_console_${vmid}`, `toolbar=no, location=no, directories=no, status=no, menubar=no, scrollbars=no, resizable=yes, copyhistory=no, width=${w}, height=${h}, top=${top}, left=${left}`);
+        }
+
         async function vmAction(n, id, a) {
             const btn = event.currentTarget; const icon = btn.querySelector('i'); const oldIcon = icon.className; icon.className = "fas fa-circle-notch fa-spin"; btn.disabled = true;
             const res = await secureFetch(`${apiBase}/vms/${n}/${id}/action`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: a }) });
             if(res.ok) { showToast(`${a.toUpperCase()} enviado para VM ${id}`, "success"); setTimeout(loadVmData, 2000); } 
             else { icon.className = oldIcon; btn.disabled = false; showToast("Erro ao executar ação", "error"); }
+        }
+
+        async function deleteVm(n, id) {
+            if(!confirm(`Tem a certeza que deseja eliminar permanentemente a VM ${id}?`)) return;
+            const res = await secureFetch(`${apiBase}/vms/${n}/${id}`, { method: 'DELETE' });
+            if(res.ok) { showToast(`VM ${id} eliminada com sucesso`, "success"); loadVmData(); }
+            else showToast("Erro ao eliminar VM", "error");
+        }
+
+        function openCloneVmModal(node, vmid, name) {
+            const overlay = document.getElementById('modalOverlay'); const content = document.getElementById('modalContent'); overlay.classList.remove('hidden'); setTimeout(() => { overlay.classList.add('opacity-100'); content.classList.add('scale-100'); }, 10);
+            document.getElementById('modalTitle').innerText = `Clonar VM: ${name} (${vmid})`;
+            document.getElementById('modalBody').innerHTML = `<div class="space-y-4"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Novo VMID</label><input type="number" id="clone_newid" value="${vmid + 100}" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Novo Nome</label><input type="text" id="clone_name" value="${name}-clone" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nó Destino</label><input type="text" id="clone_target" value="${node}" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div>`;
+            const btn = document.getElementById('modalConfirmBtn'); btn.innerText = 'CLONAR'; btn.disabled = false;
+            btn.onclick = async () => {
+                btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> CLONANDO';
+                const body = { newId: parseInt(document.getElementById('clone_newid').value), name: document.getElementById('clone_name').value, targetNode: document.getElementById('clone_target').value, full: true };
+                const res = await secureFetch(`${apiBase}/vms/${node}/${vmid}/clone`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                if(res.ok) { showToast("Clonagem iniciada no Proxmox", "success"); closeModal(); setTimeout(loadVmData, 3000); }
+                else { showToast("Erro ao iniciar clonagem", "error"); btn.disabled = false; btn.innerText = 'CLONAR'; }
+            };
         }
 
         async function loadClustersList() {
@@ -303,105 +374,53 @@
             const overlay = document.getElementById('modalOverlay'); const content = document.getElementById('modalContent'); overlay.classList.remove('hidden'); setTimeout(() => { overlay.classList.add('opacity-100'); content.classList.add('scale-100'); }, 10);
             document.getElementById('modalTitle').innerText = "Configuração do Servidor Remoto";
             const scriptContent = `#!/bin/bash
-
-# --- CONFIGURAÇÃO DE CAMINHOS DINÂMICOS ---
 USER_ATUAL=$(whoami)
 PASTA_DESTINO="/home/\${USER_ATUAL}/microk8s-api"
 SCRIPT_PYTHON="\${PASTA_DESTINO}/script.py"
 NOME_SERVICO="microk8s-api"
 FICHEIRO_SERVICO="/etc/systemd/system/\${NOME_SERVICO}.service"
-
-echo "=== A iniciar a configuração automática total (Utilizador: \${USER_ATUAL}) ==="
-
-# 1. Criar a pasta para o script, se não existir
-echo "⏳ A criar a pasta \${PASTA_DESTINO}..."
 mkdir -p "\$PASTA_DESTINO"
-
-# 2. Criar o ficheiro Python com o teu código completo
-echo "⏳ A criar o ficheiro Python em \${SCRIPT_PYTHON}..."
 cat << 'EOF' > "\$SCRIPT_PYTHON"
 import subprocess
 from http.server import BaseHTTPRequestHandler, HTTPServer
-
 PORT = 8080
-
 class ConfigHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            # Executa o comando e captura a saída textualmente
             output = subprocess.check_output(["microk8s", "config"], text=True)
-
-            # Responde com sucesso (HTTP 200)
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(output.encode("utf-8"))
         except Exception as e:
-            # Caso haja algum erro ao executar o comando
             self.send_response(500)
             self.end_headers()
-            self.wfile.write(f"Erro ao obter configuracao: {e}".encode("utf-8"))
-
+            self.wfile.write(f"Erro: {e}".encode("utf-8"))
 if __name__ == "__main__":
     server = HTTPServer(("0.0.0.0", PORT), ConfigHandler)
-    print(f"Servidor ativo na porta {PORT}... Aguardando pedidos GET.")
     server.serve_forever()
 EOF
-
-# Garantir que o utilizador atual é o dono da pasta e do ficheiro .py
-chown -R \${USER_ATUAL}:\${USER_ATUAL} "\$PASTA_DESTINO"
-
-# 3. Criar o ficheiro de serviço para o systemd (corre como root para o microk8s não dar erro de permissão)
-echo "⏳ A configurar o serviço de sistema em \${FICHEIRO_SERVICO}..."
 sudo bash -c "cat << EOF > \$FICHEIRO_SERVICO
 [Unit]
-Description=Servidor HTTP para MicroK8s Config
-After=network.target
-
+Description=MicroK8s Config API
 [Service]
-Type=simple
 ExecStart=/usr/bin/python3 \$SCRIPT_PYTHON
-Restart=on-failure
 User=root
-
 [Install]
 WantedBy=multi-user.target
 EOF"
-
-# 4. Recarregar o sistema e ativar o serviço para o arranque automático
-echo "⏳ A ativar e a iniciar o serviço no sistema..."
 sudo systemctl daemon-reload
-sudo systemctl enable "\${NOME_SERVICO}.service"
-sudo systemctl start "\${NOME_SERVICO}.service"
-
-# 5. Validação final
-echo "------------------------------------------------"
-if systemctl is-active --quiet "\${NOME_SERVICO}.service"; then
-    echo "✅ ESPETÁCULO! Servidor ativo no porto 8080."
-    echo "Agora use o IP desta máquina no KubeManager."
-else
-    echo "❌ Falha ao iniciar o serviço."
-fi
-echo "------------------------------------------------"`;
-
-            document.getElementById('modalBody').innerHTML = `<p class="text-slate-400 text-xs mb-4">Execute este script no seu nó **Master** (onde o MicroK8s está instalado) para permitir a importação remota do YAML:</p><div class="relative group"><pre id="serverScriptArea" class="bg-slate-950 p-4 rounded-xl text-blue-400 font-mono text-[9px] overflow-auto max-h-[40vh] border border-slate-800 shadow-inner">${scriptContent}</pre><button onclick="downloadScript('serverScriptArea')" class="absolute top-3 right-3 bg-slate-800 hover:bg-blue-600 text-white p-2 rounded-lg transition-all border border-slate-700 shadow-xl opacity-0 group-hover:opacity-100" title="Descarregar .sh"><i class="fas fa-file-download"></i></button></div>`;
-            const btn = document.getElementById('modalConfirmBtn'); btn.innerText = "DESCARREGAR .SH";
-            btn.onclick = () => { downloadScript('serverScriptArea'); };
+sudo systemctl enable --now "\${NOME_SERVICO}.service"`;
+            document.getElementById('modalBody').innerHTML = `<p class="text-slate-400 text-xs mb-4">Execute este script no nó Master:</p><pre id="serverScriptPre" class="bg-slate-950 p-4 rounded-xl text-blue-400 font-mono text-[9px] overflow-auto max-h-[40vh] border border-slate-800 shadow-inner">${scriptContent}</pre>`;
+            document.getElementById('modalConfirmBtn').innerText = "DESCARREGAR .SH";
+            document.getElementById('modalConfirmBtn').onclick = () => { downloadScript(); };
         }
 
-        function downloadScript(id) {
-            const text = document.getElementById(id).innerText;
-            const blob = new Blob([text], { type: 'text/x-sh' });
+        function downloadScript() {
+            const blob = new Blob([document.getElementById('serverScriptPre').innerText], { type: 'text/x-sh' });
             const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'setup-microk8s-api.sh';
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            showToast("Script descarregado com sucesso", "success");
+            const a = document.createElement('a'); a.href = url; a.download = 'setup.sh'; a.click();
         }
 
         async function loadDashboardData() {
@@ -437,31 +456,98 @@ echo "------------------------------------------------"`;
         function removeEnvRow(id) { const row = document.getElementById(`env-row-${id}`); if(row) row.remove(); }
 
         function validateCreateForm() {
-            const btn = document.getElementById('modalConfirmBtn'); const nameInput = document.querySelector('#modalBody input[id$="_name"]');
-            if(nameInput && nameInput.value.trim() === '') btn.disabled = true; else btn.disabled = false;
+            const btn = document.getElementById('modalConfirmBtn'); 
+            const nameInput = document.querySelector('#modalBody input[id$="_name"]');
+            const imageInput = document.querySelector('#modalBody input[id$="_image"]');
+            let isValid = true;
+            if(nameInput && nameInput.value.trim() === '') isValid = false;
+            if(imageInput && imageInput.value.trim() === '') isValid = false;
+            btn.disabled = !isValid;
         }
 
         async function updateIngressServiceOptions(ns) {
             const select = document.getElementById('ing_svc'); if(!select) return;
+            select.innerHTML = '<option value="">A carregar serviços...</option>';
             try {
                 const res = await secureFetch(`${apiBase}/services?ns=${ns}`); const services = await res.json();
-                if(services.length === 0) select.innerHTML = '<option value="">Nenhum serviço encontrado</option>';
-                else select.innerHTML = services.map(s => `<option value="${s.name}">${s.name.toUpperCase()}</option>`).join('');
-            } catch { select.innerHTML = '<option value="">Erro ao carregar</option>'; }
+                let html = '<option value="">-- Selecionar Serviço --</option>';
+                if(Array.isArray(services) && services.length > 0) {
+                    services.forEach(s => { html += `<option value="${s.name}">${s.name.toUpperCase()}</option>`; });
+                } else {
+                    html = '<option value="">Nenhum serviço encontrado</option>';
+                }
+                html += '<option value="manual">-- ENTRADA MANUAL --</option>';
+                select.innerHTML = html;
+                
+                select.onchange = () => {
+                    if(select.value === 'manual') {
+                        const manual = prompt("Introduza o nome do Serviço manualmente:");
+                        if(manual) {
+                            const opt = document.createElement('option');
+                            opt.value = manual; opt.innerText = manual.toUpperCase(); opt.selected = true;
+                            select.appendChild(opt);
+                        } else select.value = "";
+                    }
+                };
+            } catch { 
+                select.innerHTML = '<option value="">Erro ao carregar (Tente Manual)</option><option value="manual">-- ENTRADA MANUAL --</option>'; 
+            }
+        }
+
+        function updateModalContext(ns) {
+            if(document.getElementById('ing_svc')) updateIngressServiceOptions(ns);
+            if(document.getElementById('svc_label')) updateServiceSelectorOptions(ns);
+        }
+
+        async function updateServiceSelectorOptions(ns) {
+            const select = document.getElementById('svc_label'); if(!select) return;
+            select.innerHTML = '<option value="">A carregar apps...</option>';
+            try {
+                const podsRes = await secureFetch(`${apiBase}/pods?ns=${ns}`);
+                const depsRes = await secureFetch(`${apiBase}/deployments?ns=${ns}`);
+                
+                const pods = await podsRes.json();
+                const deps = await depsRes.json();
+                
+                const items = []; // Usar array de objetos para manter o tipo
+                if(Array.isArray(pods)) pods.forEach(p => items.push({ name: p.name, type: 'Pod' }));
+                if(Array.isArray(deps)) items.push(...deps.map(d => ({ name: d.name, type: 'Deployment' })));
+                
+                let html = '<option value="">-- Selecionar App --</option>';
+                items.forEach(item => { 
+                    html += `<option value="${item.name}">${item.name.toUpperCase()} (${item.type.toUpperCase()})</option>`; 
+                });
+                html += '<option value="manual">-- ENTRADA MANUAL --</option>';
+                
+                select.innerHTML = html;
+                
+                select.onchange = () => {
+                    if(select.value === 'manual') {
+                        const manual = prompt("Introduza a label 'app' manualmente:");
+                        if(manual) {
+                            const opt = document.createElement('option');
+                            opt.value = manual; opt.innerText = manual.toUpperCase() + " (MANUAL)"; opt.selected = true;
+                            select.appendChild(opt);
+                        } else select.value = "";
+                    }
+                };
+            } catch (err) { 
+                console.error(err);
+                select.innerHTML = '<option value="">Erro ao carregar (Tente Manual)</option><option value="manual">-- ENTRADA MANUAL --</option>'; 
+            }
         }
 
         async function loadListData(t) {
             try {
                 let url = `${apiBase}/${t}`; if(!['nodes', 'namespaces'].includes(t)) url += `?ns=${selectedNamespace}`;
                 const res = await secureFetch(url); const d = await res.json();
-                let h = `<div class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 slide-up"><div class="flex items-center space-x-3"><div class="w-2 h-8 bg-blue-600 rounded-full"></div><h2 class="text-xl font-bold text-white uppercase tracking-[0.1em]">${t === 'ingresses' ? 'Ingress' : t}</h2>${!['nodes', 'namespaces'].includes(t) ? `<div class="flex items-center bg-slate-800/50 rounded-xl px-3 py-1.5 border border-slate-700/50 ml-4"><i class="fas fa-filter text-slate-500 mr-2 text-[10px]"></i><select onchange="changeNamespace(this.value)" class="bg-transparent text-white text-[10px] font-bold focus:outline-none cursor-pointer uppercase tracking-widest ns-list-selector"></select></div>` : ''}</div>${t !== 'nodes' && t !== 'events' ? `<button onclick="openCreateModal('${t}')" class="bg-gradient-to-r from-blue-600 to-blue-500 hover:shadow-lg hover:shadow-blue-900/40 text-white px-6 py-3 rounded-xl font-bold text-[10px] uppercase tracking-[0.2em] transition-all active:scale-95 flex items-center shadow-lg shadow-blue-900/20"><i class="fas fa-plus mr-2"></i> Criar ${t === 'ingresses' ? 'Ingress' : t.slice(0,-1)}</button>` : ''}</div>`;
-                if(!['nodes', 'namespaces'].includes(t)) { setTimeout(async () => { let opts = `<option value="all" ${selectedNamespace === 'all' ? 'selected' : ''}>TODOS OS NAMESPACES</option>`; try { const nsRes = await secureFetch(`${apiBase}/namespaces`); if(nsRes.ok) { const nsList = await nsRes.json(); opts += nsList.map(n => `<option value="${n.name}" ${n.name === selectedNamespace ? 'selected' : ''}>${n.name.toUpperCase()}</option>`).join(''); } } catch {} const selectors = document.querySelectorAll('.ns-list-selector'); selectors.forEach(s => s.innerHTML = opts); }, 0); }
+                let h = `<div class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 slide-up"><div class="flex items-center space-x-3"><div class="w-2 h-8 bg-blue-600 rounded-full"></div><h2 class="text-xl font-bold text-white uppercase tracking-[0.1em]">${t === 'ingresses' ? 'Ingress' : t}</h2></div>${t !== 'nodes' && t !== 'events' ? `<button onclick="openCreateModal('${t}')" class="bg-gradient-to-r from-blue-600 to-blue-500 hover:shadow-lg hover:shadow-blue-900/40 text-white px-6 py-3 rounded-xl font-bold text-[10px] uppercase tracking-[0.2em] transition-all active:scale-95 flex items-center shadow-lg shadow-blue-900/20"><i class="fas fa-plus mr-2"></i> Criar ${t === 'ingresses' ? 'Ingress' : t.slice(0,-1)}</button>` : ''}</div>`;
                 if(!d.length) { const emptyH = h + `<div class="bg-card glass p-20 rounded-[2.5rem] border border-slate-700/50 text-center flex flex-col items-center slide-up"><div class="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-4"><i class="fas fa-inbox text-2xl text-slate-600"></i></div><p class="italic text-slate-500 tracking-widest uppercase text-[10px] font-bold">Nenhum recurso encontrado em ${selectedNamespace}</p></div>`; document.getElementById('mainContent').innerHTML = emptyH; viewCache[t] = emptyH; return; }
                 const keys = Object.keys(d[0]);
-                h += `<div class="bg-card glass rounded-[2rem] border border-slate-700/50 shadow-2xl overflow-hidden slide-up"><table class="w-full text-left"><thead class="bg-slate-800/50 text-[10px] uppercase font-bold text-slate-500 tracking-widest"><tr class="border-b border-slate-700/50"><th class="px-8 py-5">Recurso</th>${keys.filter(k => !['name','created','ip','namespace','endpoints'].includes(k)).map(k => `<th class="px-8 py-5">${k}</th>`).join('')}${t === 'services' ? '<th class="px-8 py-5">Endpoints</th>' : ''}${t !== 'nodes' && t !== 'events' ? '<th class="px-8 py-5 text-right">Ações</th>' : ''}</tr></thead><tbody class="divide-y divide-slate-700/30">`;
-                d.forEach(i => { h += `<tr class="hover:bg-slate-800/40 transition-colors group"><td class="px-8 py-5"><span class="font-bold text-white tracking-tight group-hover:text-blue-400 transition-colors">${i.name}</span>${i.namespace ? `<span class="block text-[10px] text-slate-500 font-normal uppercase mt-0.5 tracking-tighter">${i.namespace}</span>` : ''}</td>${keys.filter(k => !['name','created','ip','namespace','endpoints'].includes(k)).map(k => `<td class="px-8 py-5 text-slate-400 font-medium">${i[k] ?? '-'}</td>`).join('')}${t === 'services' ? `<td class="px-8 py-5"><span class="px-3 py-1 rounded-full text-[10px] font-bold ${i.endpoints > 0 ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}">${i.endpoints} Ativos</span></td>` : ''}${t !== 'nodes' && t !== 'events' ? `<td class="px-8 py-5 text-right"><div class="flex items-center justify-end space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">${t === 'pods' ? `<button onclick="viewPodLogs('${i.name}', '${i.namespace}')" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-blue-400 transition-all rounded-lg hover:bg-blue-400/10" title="Logs"><i class="fas fa-terminal text-xs"></i></button>` : ''}${t === 'deployments' ? `<button onclick="openScaleModal('${i.name}', '${i.namespace}', ${i.replicas})" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-amber-400 transition-all rounded-lg hover:bg-amber-400/10" title="Escalar"><i class="fas fa-arrows-alt-v text-xs"></i></button>` : ''}<button onclick="editYaml('${t}', '${i.name}', '${i.namespace || ''}')" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-indigo-400 transition-all rounded-lg hover:bg-indigo-400/10" title="YAML"><i class="fas fa-code text-xs"></i></button><button onclick="deleteResource('${t}', '${i.name}', '${i.namespace || ''}')" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-400 transition-all rounded-lg hover:bg-red-400/10" title="Eliminar"><i class="fas fa-trash-alt text-xs"></i></button></div></td>` : ''}</tr>`; });
-                const finalH = h + `</tbody></table></div>`; document.getElementById('mainContent').innerHTML = finalH; viewCache[t] = finalH;
-            } catch { const errH = '<p class="text-center text-red-500 font-bold py-20 uppercase tracking-widest text-[10px] slide-up">Falha na Ligação ao Cluster</p>'; document.getElementById('mainContent').innerHTML = errH; viewCache[t] = errH; }
+                h += `<div class="bg-card glass rounded-[2rem] border border-slate-700/50 shadow-2xl overflow-hidden slide-up"><table class="w-full text-left"><thead class="bg-slate-800/50 text-[10px] uppercase font-bold text-slate-500 tracking-widest"><tr class="border-b border-slate-700/50"><th class="px-8 py-5">Recurso</th>${keys.filter(k => !['name','created','ip','namespace','endpoints'].includes(k)).map(k => `<th class="px-8 py-5">${k}</th>`).join('')}${t === 'services' ? '<th class="px-8 py-5">Endpoints</th>' : ''}${t !== 'events' ? '<th class="px-8 py-5 text-right">Ações</th>' : ''}</tr></thead><tbody class="divide-y divide-slate-700/30">`;
+                d.forEach(i => { h += `<tr class="hover:bg-slate-800/40 transition-colors group"><td class="px-8 py-5"><span class="font-bold text-white tracking-tight group-hover:text-blue-400 transition-colors">${i.name}</span>${i.namespace ? `<span class="block text-[10px] text-slate-500 font-normal uppercase mt-0.5 tracking-tighter">${i.namespace}</span>` : ''}</td>${keys.filter(k => !['name','created','ip','namespace','endpoints'].includes(k)).map(k => `<td class="px-8 py-5 text-slate-400 font-medium">${i[k] ?? '-'}</td>`).join('')}${t === 'services' ? `<td class="px-8 py-5"><span class="px-3 py-1 rounded-full text-[10px] font-bold ${i.endpoints > 0 ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}">${i.endpoints} Ativos</span></td>` : ''}${t !== 'events' ? `<td class="px-8 py-5 text-right"><div class="flex items-center justify-end space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">${t === 'nodes' ? `<button onclick="openRoleModal('${i.name}', '${i.roles}')" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-blue-400 transition-all rounded-lg hover:bg-blue-400/10" title="Definir Role"><i class="fas fa-user-tag text-xs"></i></button>` : ''}${t === 'pods' ? `<button onclick="viewPodLogs('${i.name}', '${i.namespace}')" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-blue-400 transition-all rounded-lg hover:bg-blue-400/10" title="Logs"><i class="fas fa-terminal text-xs"></i></button>` : ''}${t === 'deployments' ? `<button onclick="openScaleModal('${i.name}', '${i.namespace}', ${i.replicas})" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-amber-400 transition-all rounded-lg hover:bg-amber-400/10" title="Escalar"><i class="fas fa-arrows-alt-v text-xs"></i></button>` : ''}<button onclick="editYaml('${t}', '${i.name}', '${i.namespace || ''}')" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-indigo-400 transition-all rounded-lg hover:bg-indigo-400/10" title="YAML"><i class="fas fa-code text-xs"></i></button>${t !== 'nodes' ? `<button onclick="deleteResource('${t}', '${i.name}', '${i.namespace || ''}')" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-400 transition-all rounded-lg hover:bg-red-400/10" title="Eliminar"><i class="fas fa-trash-alt text-xs"></i></button>` : ''}</div></td>` : ''}</tr>`; });
+                document.getElementById('mainContent').innerHTML = h + `</tbody></table></div>`; viewCache[t] = h + `</tbody></table></div>`;
+            } catch { document.getElementById('mainContent').innerHTML = '<p class="text-center text-red-500 font-bold py-20 uppercase tracking-widest text-[10px]">Falha na Ligação ao Cluster</p>'; }
         }
 
         async function openCreateModal(type, returnTo = null) {
@@ -471,80 +557,100 @@ echo "------------------------------------------------"`;
             let form = ''; const nsRes = await secureFetch(`${apiBase}/namespaces`); const nsList = await nsRes.json();
             const currentNsForCreate = selectedNamespace === 'all' ? 'default' : selectedNamespace;
             const nsOptions = nsList.map(n => `<option value="${n.name}" ${n.name === currentNsForCreate ? 'selected' : ''}>${n.name.toUpperCase()}</option>`).join('');
-            const nsSelectorHtml = type === 'namespaces' ? '' : `<div class="mb-6"><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Namespace</label><div class="flex space-x-3"><select id="create_resource_ns" onchange="if(document.getElementById('ing_svc')) updateIngressServiceOptions(this.value)" class="flex-1 bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold">${nsOptions}</select><button onclick="closeModal(); setTimeout(() => openCreateModal('namespaces', '${type}'), 300)" class="w-12 bg-slate-800 border border-slate-700 rounded-xl text-blue-500 hover:bg-slate-700 transition" title="Novo Namespace"><i class="fas fa-plus"></i></button></div></div>`;
+            const nsSelectorHtml = type === 'namespaces' ? '' : `<div class="mb-6"><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Namespace</label><div class="flex space-x-3"><select id="create_resource_ns" onchange="updateModalContext(this.value)" class="flex-1 bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold">${nsOptions}</select><button onclick="closeModal(); setTimeout(() => openCreateModal('namespaces', '${type}'), 300)" class="w-12 bg-slate-800 border border-slate-700 rounded-xl text-blue-500 hover:bg-slate-700 transition"><i class="fas fa-plus"></i></button></div></div>`;
             const imageDatalist = `<datalist id="imageSuggestions"><option value="nginx:alpine"><option value="alpine:latest"><option value="busybox:latest"><option value="redis:alpine"><option value="postgres:alpine"><option value="node:alpine"><option value="python:alpine"><option value="httpd:alpine"></datalist>`;
-            const imgPlaceholder = "Escolha ou digite uma imagem (ex: nginx:latest)";
+            
             if(type === 'namespaces') {
                 form = `<div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome</label><input type="text" id="ns_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div>`;
+            } else if(type === 'pods') {
+                form = `${nsSelectorHtml}${imageDatalist}<div class="space-y-6"><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome do Pod</label><input type="text" id="pod_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Porta Contentor</label><input type="number" id="pod_port" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Imagem</label><input type="text" list="imageSuggestions" id="pod_image" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: nginx:alpine"></div></div>`;
+            } else if(type === 'deployments') {
+                form = `${nsSelectorHtml}${imageDatalist}<div class="space-y-6"><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome</label><input type="text" id="dep_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Réplicas</label><input type="number" id="dep_replicas" value="1" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Imagem</label><input type="text" list="imageSuggestions" id="dep_image" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Porta Contentor</label><input type="number" id="dep_port" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Limite CPU</label><input type="text" id="dep_cpu" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="250m"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Limite RAM</label><input type="text" id="dep_mem" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="128Mi"></div></div><div><div class="flex justify-between items-center mb-2 ml-1"><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Variáveis de Ambiente</label><button onclick="addEnvRow()" class="text-blue-500 hover:text-blue-400 text-[10px] font-bold uppercase tracking-widest"><i class="fas fa-plus-circle mr-1"></i> Adicionar</button></div><div id="envContainer" class="max-h-32 overflow-y-auto pr-2"></div></div></div>`;
+            } else if(type === 'services') {
+                form = `${nsSelectorHtml}<div class="space-y-6"><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome do Serviço</label><input type="text" id="svc_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Selecionar App (Label)</label><select id="svc_label" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold"><option value="">A carregar apps...</option></select></div></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Tipo de Serviço</label><select id="svc_type" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold"><option>ClusterIP</option><option>NodePort</option><option>LoadBalancer</option></select></div><div><div class="flex justify-between items-center mb-2 ml-1"><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mapeamento de Portas</label><button onclick="addPortRow()" class="text-blue-500 hover:text-blue-400 text-[10px] font-bold uppercase tracking-widest"><i class="fas fa-plus-circle mr-1"></i> Adicionar Porto</button></div><div id="portsContainer" class="max-h-40 overflow-y-auto pr-2"><div class="grid grid-cols-12 gap-3 items-end mb-3"><div class="col-span-4"><label class="block text-[8px] font-bold text-slate-600 uppercase mb-1 ml-1">Porta (Svc)</label><input type="number" class="svc-port w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-xs" value="80"></div><div class="col-span-4"><label class="block text-[8px] font-bold text-slate-600 uppercase mb-1 ml-1">Target (Pod)</label><input type="number" class="svc-tport w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-xs" value="80"></div><div class="col-span-3"><label class="block text-[8px] font-bold text-slate-600 uppercase mb-1 ml-1">Proto</label><select class="svc-proto w-full bg-slate-900/50 border border-slate-700 rounded-xl px-2 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-[10px] font-bold"><option>TCP</option><option>UDP</option></select></div><div class="col-span-1"></div></div></div></div></div>`;
+            } else if(type === 'ingresses') {
+                form = `${nsSelectorHtml}<div class="space-y-6"><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome do Ingress</label><input type="text" id="ing_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Host (DNS)</label><input type="text" id="ing_host" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="myapp.local"></div></div><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Serviço Alvo</label><select id="ing_svc" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold"><option value="">A carregar serviços...</option></select></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Porta do Serviço</label><input type="number" id="ing_port" value="80" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div></div>`;
+            }
+            
+            document.getElementById('modalBody').innerHTML = form; 
+            document.getElementById('modalConfirmBtn').innerText = 'CRIAR';
+
+            if(type === 'namespaces') {
                 document.getElementById('modalConfirmBtn').onclick = () => submitCreate('namespaces', { name: document.getElementById('ns_name').value }, returnTo);
             } else if(type === 'pods') {
-                form = `${nsSelectorHtml}${imageDatalist}<div class="space-y-6"><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome do Pod</label><input type="text" id="pod_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: web-server"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Porta Contentor</label><input type="number" id="pod_port" placeholder="ex: 80" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Imagem</label><input type="text" list="imageSuggestions" id="pod_image" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="${imgPlaceholder}"></div></div>`;
                 document.getElementById('modalConfirmBtn').onclick = () => submitCreate('pods', { namespace: document.getElementById('create_resource_ns').value, name: document.getElementById('pod_name').value, image: document.getElementById('pod_image').value, containerPort: document.getElementById('pod_port').value ? parseInt(document.getElementById('pod_port').value) : null });
             } else if(type === 'deployments') {
-                form = `${nsSelectorHtml}${imageDatalist}<div class="space-y-6"><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome</label><input type="text" id="dep_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: api-deployment"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Réplicas</label><input type="number" id="dep_replicas" value="1" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Imagem</label><input type="text" list="imageSuggestions" id="dep_image" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="${imgPlaceholder}"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Porta Contentor</label><input type="number" id="dep_port" placeholder="ex: 80" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Limite CPU</label><input type="text" id="dep_cpu" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="250m"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Limite RAM</label><input type="text" id="dep_mem" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="128Mi"></div></div><div><div class="flex justify-between items-center mb-2 ml-1"><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Variáveis de Ambiente</label><button onclick="addEnvRow()" class="text-blue-500 hover:text-blue-400 text-[10px] font-bold uppercase tracking-widest"><i class="fas fa-plus-circle mr-1"></i> Adicionar</button></div><div id="envContainer" class="max-h-32 overflow-y-auto pr-2"></div></div></div>`;
                 document.getElementById('modalConfirmBtn').onclick = () => { const envVars = {}; document.querySelectorAll('#envContainer > div').forEach(row => { const k = row.querySelector('.env-key').value.trim(); const v = row.querySelector('.env-val').value.trim(); if(k) envVars[k] = v; }); submitCreate('deployments', { namespace: document.getElementById('create_resource_ns').value, name: document.getElementById('dep_name').value, image: document.getElementById('dep_image').value, replicas: parseInt(document.getElementById('dep_replicas').value), containerPort: document.getElementById('dep_port').value ? parseInt(document.getElementById('dep_port').value) : null, cpuLimit: document.getElementById('dep_cpu').value, memLimit: document.getElementById('dep_mem').value, envVars: envVars }); };
             } else if(type === 'services') {
-                form = `${nsSelectorHtml}<div class="space-y-6"><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome do Serviço</label><input type="text" id="svc_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: web-service"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Seletor (app label)</label><input type="text" id="svc_label" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: nginx"></div></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Tipo de Serviço</label><select id="svc_type" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold"><option>ClusterIP</option><option>NodePort</option><option>LoadBalancer</option></select></div><div><div class="flex justify-between items-center mb-2 ml-1"><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mapeamento de Portas</label><button onclick="addPortRow()" class="text-blue-500 hover:text-blue-400 text-[10px] font-bold uppercase tracking-widest"><i class="fas fa-plus-circle mr-1"></i> Adicionar Porto</button></div><div id="portsContainer" class="max-h-40 overflow-y-auto pr-2"><div class="grid grid-cols-12 gap-3 items-end mb-3"><div class="col-span-4"><label class="block text-[8px] font-bold text-slate-600 uppercase mb-1 ml-1">Porta (Svc)</label><input type="number" class="svc-port w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-xs" value="80"></div><div class="col-span-4"><label class="block text-[8px] font-bold text-slate-600 uppercase mb-1 ml-1">Target (Pod)</label><input type="number" class="svc-tport w-full bg-slate-900/50 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-xs" value="80"></div><div class="col-span-3"><label class="block text-[8px] font-bold text-slate-600 uppercase mb-1 ml-1">Proto</label><select class="svc-proto w-full bg-slate-900/50 border border-slate-700 rounded-xl px-2 py-2 text-white focus:border-blue-500 focus:outline-none transition shadow-inner text-[10px] font-bold"><option>TCP</option><option>UDP</option></select></div><div class="col-span-1"></div></div></div></div></div>`;
                 document.getElementById('modalConfirmBtn').onclick = () => { const ports = []; document.querySelectorAll('#portsContainer > div').forEach(row => { const p = row.querySelector('.svc-port').value; const tp = row.querySelector('.svc-tport').value; const proto = row.querySelector('.svc-proto').value; if(p && tp) ports.push({ port: parseInt(p), targetPort: parseInt(tp), protocol: proto }); }); submitCreate('services', { namespace: document.getElementById('create_resource_ns').value, name: document.getElementById('svc_name').value, appLabel: document.getElementById('svc_label').value, ports: ports, type: document.getElementById('svc_type').value }); };
+                updateServiceSelectorOptions(currentNsForCreate);
             } else if(type === 'ingresses') {
-                form = `${nsSelectorHtml}<div class="space-y-6"><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Nome do Ingress</label><input type="text" id="ing_name" oninput="validateCreateForm()" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: web-ingress"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Host (DNS)</label><input type="text" id="ing_host" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="myapp.local"></div></div><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Caminho (Path)</label><input type="text" id="ing_path" value="/" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Tipo de Caminho</label><select id="ing_pathtype" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold"><option>Prefix</option><option>Exact</option><option>ImplementationSpecific</option></select></div></div><div class="grid grid-cols-2 gap-6"><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Serviço Alvo</label><select id="ing_svc" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold"><option value="">A carregar serviços...</option></select></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Porta do Serviço</label><input type="number" id="ing_port" value="80" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div></div><div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">TLS Secret (Opcional)</label><input type="text" id="ing_tls" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner" placeholder="ex: my-tls-secret"></div></div>`;
-                document.getElementById('modalConfirmBtn').onclick = () => submitCreate('ingresses', { namespace: document.getElementById('create_resource_ns').value, name: document.getElementById('ing_name').value, host: document.getElementById('ing_host').value, path: document.getElementById('ing_path').value, pathType: document.getElementById('ing_pathtype').value, serviceName: document.getElementById('ing_svc').value, port: parseInt(document.getElementById('ing_port').value), tlsSecret: document.getElementById('ing_tls').value || null });
+                document.getElementById('modalConfirmBtn').onclick = () => submitCreate('ingresses', { namespace: document.getElementById('create_resource_ns').value, name: document.getElementById('ing_name').value, host: document.getElementById('ing_host').value, serviceName: document.getElementById('ing_svc').value, port: parseInt(document.getElementById('ing_port').value) });
                 updateIngressServiceOptions(currentNsForCreate);
             }
-            document.getElementById('modalBody').innerHTML = form; 
-            if(type === 'ingresses') updateIngressServiceOptions(currentNsForCreate);
-            document.getElementById('modalConfirmBtn').innerText = 'CRIAR'; validateCreateForm();
+
+            validateCreateForm();
         }
 
         async function submitCreate(type, data, returnTo = null) {
             const btn = document.getElementById('modalConfirmBtn'); btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> CRIANDO';
-            if(data.name) data.name = data.name.toLowerCase();
             try {
                 const res = await secureFetch(`${apiBase}/${type}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-                if(res.ok) { showToast(`${type === 'ingresses' ? 'Ingress' : type.slice(0,-1)} criado`, "success"); closeModal(); if(type === 'namespaces') await loadNamespaceOptions(); if(returnTo) setTimeout(() => openCreateModal(returnTo), 500); else loadCurrentView(true); }
-                else { const err = await res.json().catch(() => ({})); showToast(err.message || "Erro ao criar recurso", "error"); }
-            } catch (e) { showToast("Erro de rede ao criar", "error"); }
-            finally { btn.disabled = false; btn.innerText = 'CRIAR'; validateCreateForm(); }
+                if(res.ok) { showToast("Recurso criado", "success"); closeModal(); if(type === 'namespaces') await loadNamespaceOptions(); if(returnTo) setTimeout(() => openCreateModal(returnTo), 500); else loadCurrentView(true); }
+                else { const err = await res.json().catch(() => ({})); showToast(err.message || "Erro ao criar", "error"); }
+            } finally { btn.disabled = false; btn.innerText = 'CRIAR'; validateCreateForm(); }
         }
 
         async function viewPodLogs(name, ns) { try { const res = await secureFetch(`${apiBase}/pods/${name}/logs?ns=${ns}`); const d = await res.json(); openLogModal(name, d.logs); } catch { showToast("Erro ao ler logs", "error"); } }
-        function openLogModal(name, logs) { const overlay = document.getElementById('modalOverlay'); overlay.classList.remove('hidden'); setTimeout(() => overlay.classList.add('opacity-100'), 10); document.getElementById('modalTitle').innerText = `Logs: ${name}`; document.getElementById('modalBody').innerHTML = `<pre class="bg-slate-950 p-6 rounded-2xl text-green-500 font-mono text-[10px] overflow-auto max-h-[60vh] border border-slate-800 shadow-inner selection:bg-green-500/20">${logs}</pre>`; document.getElementById('modalConfirmBtn').classList.add('hidden'); }
-
-        function openScaleModal(name, ns, current) {
-            const overlay = document.getElementById('modalOverlay'); overlay.classList.remove('hidden'); setTimeout(() => overlay.classList.add('opacity-100'), 10); document.getElementById('modalTitle').innerText = `Escalar: ${name}`; document.getElementById('modalBody').innerHTML = `<div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Número de Replicas</label><input type="number" id="scale_val" value="${current}" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div>`;
-            const btn = document.getElementById('modalConfirmBtn'); btn.classList.remove('hidden'); btn.innerText = 'ESCALAR';
-            btn.onclick = async () => { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> ESCALANDO'; try { const res = await secureFetch(`${apiBase}/deployments/scale`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ namespace: ns, name: name, replicas: parseInt(document.getElementById('scale_val').value) }) }); if(res.ok) { showToast("Deployment escalado", "success"); closeModal(); loadCurrentView(true); } } finally { btn.disabled = false; btn.innerText = 'ESCALAR'; } };
-        }
-
-        async function deleteResource(type, name, ns) {
-            if(!confirm(`Tem a certeza que deseja eliminar ${type.slice(0,-1)} '${name}'?`)) return;
-            try {
-                let url = `${apiBase}/${type}/${name}`; if(ns) url += `?ns=${ns}`;
-                const res = await secureFetch(url, { method: 'DELETE' });
-                if(res.ok) { showToast(`${type.slice(0,-1).toUpperCase()} eliminado`, "success"); loadCurrentView(true); }
-                else { const d = await res.json().catch(() => ({})); showToast(d.message || "Erro ao eliminar", "error"); }
-            } catch { showToast("Erro de ligação", "error"); }
-        }
+        function openLogModal(name, logs) { const overlay = document.getElementById('modalOverlay'); overlay.classList.remove('hidden'); setTimeout(() => overlay.classList.add('opacity-100'), 10); document.getElementById('modalTitle').innerText = `Logs: ${name}`; document.getElementById('modalBody').innerHTML = `<pre class="bg-slate-950 p-6 rounded-2xl text-green-500 font-mono text-[10px] overflow-auto max-h-[60vh] border border-slate-800 shadow-inner">${logs}</pre>`; document.getElementById('modalConfirmBtn').classList.add('hidden'); }
 
         async function editYaml(type, name, ns) {
             const overlay = document.getElementById('modalOverlay'); overlay.classList.remove('hidden'); setTimeout(() => overlay.classList.add('opacity-100'), 10);
             document.getElementById('modalTitle').innerText = `Editar YAML: ${name}`;
             document.getElementById('modalBody').innerHTML = `<div id="yamlEditor" class="h-80 w-full rounded-xl border border-slate-700 overflow-hidden"></div>`;
-            const editor = ace.edit("yamlEditor"); editor.setTheme("ace/theme/monokai"); editor.session.setMode("ace/mode/yaml"); editor.setOptions({ fontSize: "12px" });
+            const editor = ace.edit("yamlEditor"); editor.setTheme("ace/theme/monokai"); editor.session.setMode("ace/mode/yaml");
             try {
                 let url = `${apiBase}/yaml/${type}/${name}`; if(ns) url += `?ns=${ns}`;
                 const res = await secureFetch(url); const d = await res.json(); editor.setValue(d.yaml, -1);
             } catch { showToast("Erro ao carregar YAML", "error"); }
-            const btn = document.getElementById('modalConfirmBtn'); btn.innerText = 'GUARDAR';
+            const btn = document.getElementById('modalConfirmBtn'); btn.innerText = 'GUARDAR'; btn.classList.remove('hidden');
             btn.onclick = async () => {
                 btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> GUARDANDO';
                 try {
                     let url = `${apiBase}/yaml/${type}/${name}`; if(ns) url += `?ns=${ns}`;
                     const res = await secureFetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ yaml: editor.getValue() }) });
                     if(res.ok) { showToast("YAML atualizado", "success"); closeModal(); loadCurrentView(true); }
-                    else { const err = await res.json().catch(() => ({})); showToast(err.message || "Erro ao validar YAML", "error"); }
-                } catch { showToast("Erro ao guardar", "error"); }
-                finally { btn.disabled = false; btn.innerText = 'GUARDAR'; }
+                    else { const err = await res.json().catch(() => ({})); showToast(err.message || "Erro ao validar", "error"); }
+                } finally { btn.disabled = false; btn.innerText = 'GUARDAR'; }
+            };
+        }
+
+        function openScaleModal(name, ns, current) {
+            const overlay = document.getElementById('modalOverlay'); overlay.classList.remove('hidden'); setTimeout(() => overlay.classList.add('opacity-100'), 10); document.getElementById('modalTitle').innerText = `Escalar: ${name}`; document.getElementById('modalBody').innerHTML = `<div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Número de Replicas</label><input type="number" id="scale_val" value="${current}" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner"></div>`;
+            const btn = document.getElementById('modalConfirmBtn'); btn.classList.remove('hidden'); btn.innerText = 'ESCALAR';
+            btn.onclick = async () => { btn.disabled = true; try { const res = await secureFetch(`${apiBase}/deployments/scale`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ namespace: ns, name: name, replicas: parseInt(document.getElementById('scale_val').value) }) }); if(res.ok) { showToast("Deployment escalado", "success"); closeModal(); loadCurrentView(true); } } finally { btn.disabled = false; } };
+        }
+
+        async function deleteResource(type, name, ns) {
+            if(!confirm(`Eliminar ${name}?`)) return;
+            let url = `${apiBase}/${type}/${name}`; if(ns) url += `?ns=${ns}`;
+            const res = await secureFetch(url, { method: 'DELETE' });
+            if(res.ok) { showToast("Eliminado", "success"); loadCurrentView(true); } else showToast("Erro ao eliminar", "error");
+        }
+
+        function openRoleModal(nodeName, currentRoles) {
+            const overlay = document.getElementById('modalOverlay'); overlay.classList.remove('hidden'); setTimeout(() => overlay.classList.add('opacity-100'), 10);
+            document.getElementById('modalTitle').innerText = `Definir Role: ${nodeName}`;
+            document.getElementById('modalBody').innerHTML = `<div><label class="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1 tracking-widest">Role do Node</label><select id="node_role_val" class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 focus:outline-none transition shadow-inner uppercase text-[10px] font-bold"><option value="">Nenhuma</option><option value="control-plane" ${currentRoles.includes('control-plane') ? 'selected' : ''}>Control Plane</option><option value="worker" ${currentRoles.includes('worker') || currentRoles === '' ? 'selected' : ''}>Worker</option></select><p class="mt-4 text-[10px] text-slate-500 italic uppercase tracking-tighter">Isto irá atualizar a label 'node-role.kubernetes.io/&lt;role&gt;'</p></div>`;
+            const btn = document.getElementById('modalConfirmBtn'); btn.classList.remove('hidden'); btn.innerText = 'ATUALIZAR';
+            btn.onclick = async () => {
+                btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i> ATUALIZANDO';
+                try {
+                    const res = await secureFetch(`${apiBase}/nodes/${nodeName}/role`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: document.getElementById('node_role_val').value }) });
+                    if(res.ok) { showToast("Role do node atualizada", "success"); closeModal(); loadCurrentView(true); }
+                    else { const err = await res.json().catch(() => ({})); showToast(err.message || "Erro ao atualizar role", "error"); }
+                } catch { showToast("Erro ao comunicar com a API", "error"); }
+                finally { btn.disabled = false; btn.innerText = 'ATUALIZAR'; }
             };
         }
 
@@ -570,7 +676,7 @@ echo "------------------------------------------------"`;
         function loadCurrentView(skipCache = false) { loadView(currentView, null, skipCache); }
         function refreshCurrentView() { loadView(currentView, null, true); }
         function changeNamespace(n) { selectedNamespace = n; loadCurrentView(true); }
-        function showToast(m, t) { const a = document.getElementById('toastArea'); const d = document.createElement('div'); d.className = `${t==='error'?'bg-red-500 shadow-red-900/30':'bg-blue-600 shadow-blue-900/30'} text-white px-8 py-4 rounded-2xl shadow-2xl fade-in flex items-center space-x-3 border border-white/10`; d.innerHTML = `<i class="fas ${t==='error'?'fa-exclamation-circle':'fa-info-circle'} text-lg"></i><span class="font-bold text-[10px] uppercase tracking-[0.2em]">${m}</span>`; a.appendChild(d); setTimeout(() => { d.style.opacity = '0'; d.style.transform = 'translateX(20px)'; setTimeout(() => d.remove(), 500); }, 3000); }
+        function showToast(m, t) { const a = document.getElementById('toastArea'); const d = document.createElement('div'); d.className = `${t==='error'?'bg-red-600 shadow-red-900/40':'bg-blue-600 shadow-blue-900/40'} text-white px-8 py-4 rounded-2xl shadow-2xl fade-in flex items-center space-x-3 border border-white/20 min-w-[300px] backdrop-blur-md`; d.innerHTML = `<i class="fas ${t==='error'?'fa-exclamation-triangle':'fa-info-circle'} text-lg"></i><span class="font-bold text-xs uppercase tracking-wider">${m}</span>`; a.appendChild(d); setTimeout(() => { d.style.opacity = '0'; d.style.transform = 'translateX(20px)'; setTimeout(() => d.remove(), 500); }, 5000); }
         window.onload = () => { updateHeaderClusterStatus(); updateProxmoxButtonState(); loadView('dashboard', null); };
     </script>
 </body>

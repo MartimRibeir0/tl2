@@ -1,4 +1,4 @@
-﻿using k8s;
+using k8s;
 using KubeManager.API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -40,12 +40,24 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseAuthorization();
 
-// ── ADICIONE ESTAS DUAS LINHAS ──
-app.UseDefaultFiles(); // Procura automaticamente por ficheiros index.html
-app.UseStaticFiles();  // Permite servir a pasta estática "wwwroot"
-// ────────────────────────────────
+app.UseDefaultFiles(); 
+app.UseStaticFiles();  
+
+// ── TRATAMENTO GLOBAL DE EXCEÇÕES ──
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        context.Response.StatusCode = 400;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new { message = ex.Message });
+    }
+});
 
 app.MapControllers();
 
 app.Run();
-

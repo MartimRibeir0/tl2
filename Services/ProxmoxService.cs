@@ -30,7 +30,7 @@ public class ProxmoxService
         if (string.IsNullOrEmpty(pveUrl)) throw new Exception("URL do Proxmox não fornecida");
 
         var baseUrl = pveUrl.EndsWith("/") ? pveUrl : pveUrl + "/";
-        if (!baseUrl.EndsWith("api2/json/")) baseUrl += "api2/json/";
+        if (!baseUrl.Contains("api2/json/")) baseUrl += "api2/json/";
 
         var fullUrl = baseUrl + path;
         if (query != null)

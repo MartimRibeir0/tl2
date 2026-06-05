@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using KubeManager.API.Services;
 
 namespace KubeManager.API.Controllers;
 
@@ -6,17 +7,15 @@ namespace KubeManager.API.Controllers;
 [Route("api/[controller]")]
 public class ConfigController : ControllerBase
 {
-    private readonly string _clustersPath;
-    private readonly HttpClient _http;
-
-    public ConfigController()
+    private readonly KubernetesService _k8sSvc;
+    private static readonly HttpClient _http = new HttpClient(new HttpClientHandler
     {
-        _clustersPath = Path.Combine(AppContext.BaseDirectory, "clusters");
-        if (!Directory.Exists(_clustersPath)) Directory.CreateDirectory(_clustersPath);
-        _http = new HttpClient(new HttpClientHandler
-        {
-            ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
-        });
+        ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+    });
+
+    public ConfigController(KubernetesService k8sSvc)
+    {
+        _k8sSvc = k8sSvc;
     }
 
     [HttpGet("fetch-yaml")]
@@ -39,7 +38,7 @@ public class ConfigController : ControllerBase
     [HttpGet("clusters")]
     public IActionResult GetClusters()
     {
-        var files = Directory.GetFiles(_clustersPath, "*.yaml");
+        var files = Directory.GetFiles(_k8sSvc.ClustersPath, "*.yaml");
         return Ok(files.Select(Path.GetFileNameWithoutExtension));
     }
 
@@ -49,20 +48,27 @@ public class ConfigController : ControllerBase
         if (string.IsNullOrEmpty(dto.Name) || string.IsNullOrEmpty(dto.Yaml))
             return BadRequest("Nome e YAML são obrigatórios.");
 
-        var fileName = $"{dto.Name.ToLower().Replace(" ", "-")}.yaml";
-        var filePath = Path.Combine(_clustersPath, fileName);
+        var clusterName = dto.Name.ToLower().Replace(" ", "-");
+        var fileName = $"{clusterName}.yaml";
+        var filePath = Path.Combine(_k8sSvc.ClustersPath, fileName);
         
         await System.IO.File.WriteAllTextAsync(filePath, dto.Yaml);
+        
+        // Invalidar cache se o cluster já estiver carregado
+        KubernetesService.InvalidateCache(clusterName);
+        
         return Ok(new { message = "Configuração guardada com sucesso!" });
     }
 
     [HttpDelete("clusters/{name}")]
     public IActionResult DeleteCluster(string name)
     {
-        var filePath = Path.Combine(_clustersPath, $"{name}.yaml");
+        var clusterName = name.ToLower().Replace(" ", "-");
+        var filePath = Path.Combine(_k8sSvc.ClustersPath, $"{clusterName}.yaml");
         if (System.IO.File.Exists(filePath))
         {
             System.IO.File.Delete(filePath);
+            KubernetesService.InvalidateCache(clusterName);
             return Ok();
         }
         return NotFound();
