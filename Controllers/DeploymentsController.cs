@@ -20,7 +20,7 @@ public class DeploymentsController : ControllerBase
     {
         try
         {
-            await _svc.CreateDeploymentAsync(dto.Namespace, dto.Name, dto.Image, dto.Replicas, dto.ContainerPort, dto.EnvVars, dto.CpuLimit, dto.MemLimit);
+            await _svc.CreateDeploymentAsync(dto.Namespace, dto.Name, dto.Image, dto.Replicas, dto.ContainerPort, dto.EnvVars, dto.CpuLimit, dto.MemLimit, dto.ImagePullPolicy, dto.UpdateStrategy);
             return Ok(new { message = "Deployment criado com sucesso" });
         }
         catch (Exception ex)

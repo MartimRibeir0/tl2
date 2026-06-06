@@ -20,7 +20,7 @@ public class PodsController : ControllerBase
     {
         try 
         {
-            await _svc.CreatePodAsync(dto.Namespace, dto.Name, dto.Image, dto.ContainerPort);
+            await _svc.CreatePodAsync(dto.Namespace, dto.Name, dto.Image, dto.ContainerPort, dto.Labels, dto.EnvVars, dto.CpuLimit, dto.MemLimit);
             return Ok(new { message = "Pod criado com sucesso" });
         }
         catch (Exception ex)

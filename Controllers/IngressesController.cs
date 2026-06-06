@@ -20,7 +20,7 @@ public class IngressesController : ControllerBase
     {
         try
         {
-            await _svc.CreateIngressAsync(dto.Namespace, dto.Name, dto.Host, dto.ServiceName, dto.Port, dto.Path, dto.PathType, dto.TlsSecret);
+            await _svc.CreateIngressAsync(dto.Namespace, dto.Name, dto.Host, dto.ServiceName, dto.Port, dto.Path, dto.PathType, dto.TlsSecret, dto.Annotations);
             return Ok(new { message = "Ingress criado com sucesso" });
         }
         catch (Exception ex)

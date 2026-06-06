@@ -20,7 +20,7 @@ public class ServicesController : ControllerBase
     {
         try
         {
-            await _svc.CreateServiceAsync(dto.Namespace, dto.Name, dto.AppLabel, dto.Ports, dto.Type);
+            await _svc.CreateServiceAsync(dto.Namespace, dto.Name, dto.AppLabel, dto.Ports, dto.Type, dto.CustomLabels);
             return Ok(new { message = "Serviço criado com sucesso" });
         }
         catch (Exception ex)

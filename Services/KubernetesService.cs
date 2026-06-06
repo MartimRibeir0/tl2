@@ -3,6 +3,8 @@ using k8s.Models;
 using k8s.Autorest;
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using KubeManager.API.Models;
 
 namespace KubeManager.API.Services;
@@ -83,6 +85,22 @@ public class KubernetesService
             catch { }
         }
         return ex.Message;
+    }
+
+    public (string Key, string Cert) GenerateSelfSignedCert(string commonName)
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest($"CN={commonName}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
+        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false));
+
+        var certificate = request.CreateSelfSigned(DateTimeOffset.Now, DateTimeOffset.Now.AddYears(1));
+
+        var certPem = new string(PemEncoding.Write("CERTIFICATE", certificate.Export(X509ContentType.Cert)));
+        var keyPem = new string(PemEncoding.Write("PRIVATE KEY", rsa.ExportPkcs8PrivateKey()));
+
+        return (keyPem, certPem);
     }
 
     // ── NODES ──────────────────────────────────────────────
@@ -213,7 +231,7 @@ public class KubernetesService
         return pod.Status.Phase;
     }
 
-    public async Task CreatePodAsync(string ns, string name, string image, int? containerPort = null)
+    public async Task CreatePodAsync(string ns, string name, string image, int? containerPort = null, Dictionary<string, string>? labels = null, Dictionary<string, string>? envVars = null, string? cpuLimit = null, string? memLimit = null)
     {
         if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
         ns = ns.Trim(); name = name.Trim().ToLower(); image = image.Trim();
@@ -223,23 +241,31 @@ public class KubernetesService
 
         try
         {
+            var podLabels = labels ?? new Dictionary<string, string>();
+            if (!podLabels.ContainsKey("app")) podLabels["app"] = name;
+
+            var container = new V1Container
+            {
+                Name = name,
+                Image = image,
+                Env = envVars?.Select(e => new V1EnvVar { Name = e.Key, Value = e.Value }).ToList(),
+                Resources = new V1ResourceRequirements { Limits = new Dictionary<string, ResourceQuantity>() },
+                Ports = containerPort.HasValue ? new List<V1ContainerPort> { new V1ContainerPort { ContainerPort = containerPort.Value } } : null
+            };
+            if (!string.IsNullOrEmpty(cpuLimit)) container.Resources.Limits["cpu"] = new ResourceQuantity(cpuLimit);
+            if (!string.IsNullOrEmpty(memLimit)) container.Resources.Limits["memory"] = new ResourceQuantity(memLimit);
+
             var pod = new V1Pod
             {
                 Metadata = new V1ObjectMeta
                 {
                     Name = name,
                     NamespaceProperty = ns,
-                    Labels = new Dictionary<string, string> { { "app", name } }
+                    Labels = podLabels
                 },
                 Spec = new V1PodSpec
                 {
-                    Containers = new List<V1Container> {
-                        new V1Container {
-                            Name = name,
-                            Image = image,
-                            Ports = containerPort.HasValue ? new List<V1ContainerPort> { new V1ContainerPort { ContainerPort = containerPort.Value } } : null
-                        }
-                    }
+                    Containers = new List<V1Container> { container }
                 }
             };
             await _client.CoreV1.CreateNamespacedPodAsync(pod, ns);
@@ -275,7 +301,7 @@ public class KubernetesService
         }
     }
 
-    public async Task CreateDeploymentAsync(string ns, string name, string image, int replicas = 1, int? containerPort = null, Dictionary<string, string>? envVars = null, string? cpuLimit = null, string? memLimit = null)
+    public async Task CreateDeploymentAsync(string ns, string name, string image, int replicas = 1, int? containerPort = null, Dictionary<string, string>? envVars = null, string? cpuLimit = null, string? memLimit = null, string? imagePullPolicy = "IfNotPresent", string? updateStrategy = "RollingUpdate")
     {
         if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
         ns = ns.Trim(); name = name.Trim().ToLower(); image = image.Trim();
@@ -285,6 +311,7 @@ public class KubernetesService
             {
                 Name = name,
                 Image = image,
+                ImagePullPolicy = imagePullPolicy,
                 Env = envVars?.Select(e => new V1EnvVar { Name = e.Key, Value = e.Value }).ToList(),
                 Resources = new V1ResourceRequirements { Limits = new Dictionary<string, ResourceQuantity>() },
                 Ports = containerPort.HasValue ? new List<V1ContainerPort> { new V1ContainerPort { ContainerPort = containerPort.Value } } : null
@@ -296,6 +323,7 @@ public class KubernetesService
                 Metadata = new V1ObjectMeta { Name = name, NamespaceProperty = ns }, 
                 Spec = new V1DeploymentSpec { 
                     Replicas = replicas, 
+                    Strategy = new V1DeploymentStrategy { Type = updateStrategy },
                     Selector = new V1LabelSelector { MatchLabels = new Dictionary<string, string> { { "app", name } } }, 
                     Template = new V1PodTemplateSpec { 
                         Metadata = new V1ObjectMeta { Labels = new Dictionary<string, string> { { "app", name } } }, 
@@ -354,13 +382,16 @@ public class KubernetesService
         catch (Exception ex) { Console.WriteLine($"Erro ao obter serviços: {ex.Message}"); return Array.Empty<object>(); }
     }
 
-    public async Task CreateServiceAsync(string ns, string name, string appLabel, List<ServicePortDto> ports, string type = "ClusterIP")
+    public async Task CreateServiceAsync(string ns, string name, string appLabel, List<ServicePortDto> ports, string type = "ClusterIP", Dictionary<string, string>? customLabels = null)
     {
         if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
         try
         {
+            var selector = new Dictionary<string, string> { { "app", appLabel.Trim() } };
+            if (customLabels != null) foreach (var kv in customLabels) selector[kv.Key] = kv.Value;
+
             var svcPorts = ports.Select(p => new V1ServicePort { Port = p.Port, TargetPort = p.TargetPort, NodePort = p.NodePort, Protocol = p.Protocol, Name = p.Name }).ToList();
-            var svc = new V1Service { Metadata = new V1ObjectMeta { Name = name.Trim().ToLower(), NamespaceProperty = ns }, Spec = new V1ServiceSpec { Type = type, Selector = new Dictionary<string, string> { { "app", appLabel.Trim() } }, Ports = svcPorts } };
+            var svc = new V1Service { Metadata = new V1ObjectMeta { Name = name.Trim().ToLower(), NamespaceProperty = ns }, Spec = new V1ServiceSpec { Type = type, Selector = selector, Ports = svcPorts } };
             await _client.CoreV1.CreateNamespacedServiceAsync(svc, ns);
         }
         catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
@@ -385,13 +416,16 @@ public class KubernetesService
         catch (Exception ex) { Console.WriteLine($"Erro ao obter ingresses: {ex.Message}"); return Array.Empty<object>(); }
     }
 
-    public async Task CreateIngressAsync(string ns, string name, string host, string serviceName, int port, string path = "/", string pathType = "Prefix", string? tlsSecret = null)
+    public async Task CreateIngressAsync(string ns, string name, string host, string serviceName, int port, string path = "/", string pathType = "Prefix", string? tlsSecret = null, Dictionary<string, string>? annotations = null)
     {
         if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
         try
         {
+            var ingAnnotations = annotations ?? new Dictionary<string, string>();
+            if (!ingAnnotations.ContainsKey("kubernetes.io/ingress.class")) ingAnnotations["kubernetes.io/ingress.class"] = "nginx";
+
             var ingress = new V1Ingress {
-                Metadata = new V1ObjectMeta { Name = name.Trim().ToLower(), NamespaceProperty = ns, Annotations = new Dictionary<string, string> { { "kubernetes.io/ingress.class", "nginx" } } },
+                Metadata = new V1ObjectMeta { Name = name.Trim().ToLower(), NamespaceProperty = ns, Annotations = ingAnnotations },
                 Spec = new V1IngressSpec {
                     IngressClassName = "nginx",
                     Rules = new List<V1IngressRule> { new V1IngressRule { Host = host, Http = new V1HTTPIngressRuleValue { Paths = new List<V1HTTPIngressPath> { new V1HTTPIngressPath { Path = path, PathType = pathType, Backend = new V1IngressBackend { Service = new V1IngressServiceBackend { Name = serviceName, Port = new V1ServiceBackendPort { Number = port } } } } } } } }
@@ -407,6 +441,47 @@ public class KubernetesService
     {
         if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
         try { await _client.NetworkingV1.DeleteNamespacedIngressAsync(name, ns); } 
+        catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
+    }
+
+    // ── SECRETS ───────────────────────────────────────────
+    public async Task<object> GetSecretsAsync(string? ns = null)
+    {
+        if (_client == null) return Array.Empty<object>();
+        try
+        {
+            var secrets = string.IsNullOrEmpty(ns) || ns == "all"
+                ? await _client.CoreV1.ListSecretForAllNamespacesAsync()
+                : await _client.CoreV1.ListNamespacedSecretAsync(ns);
+            return secrets.Items.Select(s => new { name = s.Metadata.Name, @namespace = s.Metadata.NamespaceProperty, type = s.Type, created = s.Metadata.CreationTimestamp });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao obter secrets: {ex.Message}");
+            return Array.Empty<object>(); 
+        }
+    }
+
+    public async Task CreateTlsSecretAsync(string ns, string name, string key, string cert)
+    {
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
+        try
+        {
+            var secret = new V1Secret
+            {
+                Metadata = new V1ObjectMeta { Name = name.Trim().ToLower(), NamespaceProperty = ns },
+                Type = "kubernetes.io/tls",
+                StringData = new Dictionary<string, string> { { "tls.key", key.Trim() }, { "tls.crt", cert.Trim() } }
+            };
+            await _client.CoreV1.CreateNamespacedSecretAsync(secret, ns);
+        }
+        catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
+    }
+
+    public async Task DeleteSecretAsync(string ns, string name)
+    {
+        if (_client == null) throw new Exception("Cliente Kubernetes não inicializado.");
+        try { await _client.CoreV1.DeleteNamespacedSecretAsync(name, ns); } 
         catch (Exception ex) { throw new Exception(GetK8sErrorMessage(ex)); }
     }
 
